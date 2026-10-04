@@ -1,0 +1,41 @@
+# ================= Python =================
+venv/
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+dist/
+*.egg-info/
+
+# ================= Jupyter =================
+.ipynb_checkpoints/
+
+# ================= NISAR Data (LARGE FILES) =================
+# HDF5 files are 1.5+ GB, cannot be pushed to GitHub
+nisar_data/
+*.h5
+*.hdf5
+
+# ================= Output (Regenerable) =================
+# These are regenerated from source code, so no need to commit
+output/*.npy
+output/*.tif
+output/*.png
+
+# ================= IDE / Editor =================
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# ================= OS =================
+.DS_Store
+Thumbs.db
+
+# ================= Auth (NEVER COMMIT) =================
+.netrc
+_netrc
+*.netrc
+.env
