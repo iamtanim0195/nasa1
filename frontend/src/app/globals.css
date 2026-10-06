@@ -1,0 +1,372 @@
+﻿@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ========================================================================== */
+/*  Design tokens                                                             */
+/* ========================================================================== */
+/*
+ * Two themes, one token set. Every colour in the app resolves through these
+ * variables, so a component never branches on the theme â€” it just asks for
+ * "hairline" or "sunken" and gets the right value.
+ *
+ *   space-950..600  surfaces, darkest to lightest  â†’ lightest to darkest in light mode
+ *   ink             primary / muted / faint text   â†’ inverts
+ *   elevate         raised, hover, sheen tint      â†’ white on dark, slate on light
+ *   hairline        borders and dividers           â†’ inverts with `elevate`
+ *   sunken          inset wells (inputs, chart beds)
+ *   on-accent       text sitting on the accent gradient â€” dark in BOTH themes,
+ *                   because the gradient itself is mid-saturation either way
+ *
+ * Values are space-separated RGB triples so Tailwind's `/opacity` syntax works.
+ */
+
+:root,
+.theme-dark {
+  color-scheme: dark;
+
+  --space-950: 2 4 10;
+  --space-900: 4 7 17;
+  --space-850: 7 12 24;
+  --space-800: 10 17 32;
+  --space-700: 17 26 46;
+  --space-600: 26 37 64;
+
+  --ink: 238 244 255;
+  --ink-muted: 155 168 189;
+  --ink-faint: 92 107 133;
+
+  --elevate: 255 255 255;
+  --hairline: 255 255 255;
+  --sunken: rgba(2, 4, 10, 0.28);
+  --on-accent: 4 7 17;
+
+  --accent: 39 201 255;
+  --accent-soft: 127 226 255;
+  --accent-deep: 11 132 184;
+
+  --signal-critical: 255 77 77;
+  --signal-high: 255 140 66;
+  --signal-medium: 255 212 59;
+  --signal-low: 68 255 155;
+  --signal-info: 39 201 255;
+  --signal-violet: 180 119 255;
+
+  /* Glass surfaces, from the most opaque chrome down to the lightest layer. */
+  --surface-0: rgba(4, 7, 17, 0.92);
+  --surface-1: rgba(7, 12, 24, 0.78);
+  --surface-2: rgba(17, 26, 46, 0.62);
+  --surface-3: rgba(26, 37, 64, 0.5);
+
+  --hairline-strong: rgba(39, 201, 255, 0.32);
+  --panel-sheen: linear-gradient(160deg, rgba(255, 255, 255, 0.06) 0%, rgba(255, 255, 255, 0) 42%);
+  --scanline-color: rgba(39, 201, 255, 0.14);
+  --vignette-edge: rgba(2, 4, 10, 0.55);
+  --scrollbar-thumb: rgba(39, 201, 255, 0.22);
+  --scrollbar-thumb-hover: rgba(39, 201, 255, 0.42);
+}
+
+.theme-light {
+  color-scheme: light;
+
+  /* Surfaces run the other way: 950 is the page (near-white), 600 the strongest
+     chrome. Panels sit *above* the page, exactly as they do in dark mode. */
+  --space-950: 244 247 252;
+  --space-900: 255 255 255;
+  --space-850: 250 252 255;
+  --space-800: 241 245 250;
+  --space-700: 232 238 247;
+  --space-600: 219 228 240;
+
+  --ink: 15 23 42;
+  --ink-muted: 71 85 105;
+  --ink-faint: 130 145 165;
+
+  --elevate: 15 23 42;
+  --hairline: 15 23 42;
+  --sunken: rgba(15, 23, 42, 0.045);
+  --on-accent: 4 7 17;
+
+  /* A touch deeper, so the accent still reads on white. */
+  --accent: 3 145 190;
+  --accent-soft: 39 201 255;
+  --accent-deep: 8 100 140;
+
+  --signal-critical: 214 40 40;
+  --signal-high: 199 96 22;
+  --signal-medium: 168 129 9;
+  --signal-low: 12 148 88;
+  --signal-info: 3 145 190;
+  --signal-violet: 124 58 237;
+
+  --surface-0: rgba(255, 255, 255, 0.94);
+  --surface-1: rgba(255, 255, 255, 0.82);
+  --surface-2: rgba(248, 250, 253, 0.72);
+  --surface-3: rgba(241, 245, 250, 0.6);
+
+  --hairline-strong: rgba(3, 145, 190, 0.35);
+  --panel-sheen: linear-gradient(160deg, rgba(255, 255, 255, 0.7) 0%, rgba(255, 255, 255, 0) 42%);
+  --scanline-color: rgba(3, 145, 190, 0.12);
+  --vignette-edge: rgba(2, 4, 10, 0.55);
+  --scrollbar-thumb: rgba(15, 23, 42, 0.18);
+  --scrollbar-thumb-hover: rgba(15, 23, 42, 0.32);
+}
+
+:root {
+  --font-sans: 'Segoe UI', system-ui, -apple-system, 'Helvetica Neue', Arial, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace;
+
+  --chrome-header: 56px;
+  --chrome-gutter: 16px;
+  --sidebar-width: 344px;
+}
+
+/* ========================================================================== */
+/*  Base                                                                      */
+/* ========================================================================== */
+
+@layer base {
+  * {
+    @apply border-hairline/10;
+  }
+
+  html {
+    height: 100%;
+    /* `color-scheme` is set by the token blocks above; it drives native
+       scrollbars, form controls and the canvas backdrop. */
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  body {
+    @apply h-full bg-space-950 text-ink antialiased;
+    font-family: var(--font-sans);
+    /* The dashboard is an instrument panel: the page itself never scrolls. */
+    overflow: hidden;
+    overscroll-behavior: none;
+  }
+
+  ::selection {
+    background: rgb(var(--accent) / 0.28);
+    color: rgb(var(--space-950));
+  }
+
+  :focus-visible {
+    @apply outline-none ring-2 ring-accent/70 ring-offset-2 ring-offset-space-900;
+  }
+
+  button,
+  [role='button'] {
+    -webkit-user-select: none;
+    user-select: none;
+  }
+}
+
+/* ========================================================================== */
+/*  Components                                                                */
+/* ========================================================================== */
+
+@layer components {
+  /* ---- glass surfaces ---- */
+  .glass {
+    background: var(--surface-1);
+    border: 1px solid rgb(var(--hairline) / 0.09);
+    backdrop-filter: blur(18px) saturate(140%);
+    -webkit-backdrop-filter: blur(18px) saturate(140%);
+  }
+
+  .glass-strong {
+    background: var(--surface-0);
+    border: 1px solid var(--hairline-strong);
+    backdrop-filter: blur(26px) saturate(150%);
+    -webkit-backdrop-filter: blur(26px) saturate(150%);
+  }
+
+  .glass-subtle {
+    background: var(--surface-2);
+    border: 1px solid rgb(var(--hairline) / 0.08);
+    @apply backdrop-blur-md;
+  }
+
+  /* Sheen used on premium cards (branding, KPI tiles). */
+  .sheen::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    background: var(--panel-sheen);
+    pointer-events: none;
+  }
+
+  /* Thin technical grid used behind empty states and chart cards. */
+  .grid-faint {
+    background-image: linear-gradient(rgb(var(--accent) / 0.06) 1px, transparent 1px),
+      linear-gradient(90deg, rgb(var(--accent) / 0.06) 1px, transparent 1px);
+    background-size: 28px 28px;
+  }
+
+  .text-gradient {
+    @apply bg-gradient-to-r from-accent via-accent-soft to-ink bg-clip-text text-transparent;
+  }
+
+  .hairline {
+    border-color: rgb(var(--hairline) / 0.09);
+  }
+
+  /* ---- scrollbars: thin, and neutral in both themes ---- */
+  .scrollbar-mission {
+    scrollbar-width: thin;
+    scrollbar-color: var(--scrollbar-thumb) transparent;
+  }
+
+  .scrollbar-mission::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+
+  .scrollbar-mission::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  .scrollbar-mission::-webkit-scrollbar-thumb {
+    background: var(--scrollbar-thumb);
+    border-radius: 999px;
+    border: 2px solid transparent;
+    background-clip: content-box;
+  }
+
+  .scrollbar-mission::-webkit-scrollbar-thumb:hover {
+    background: var(--scrollbar-thumb-hover);
+    background-clip: content-box;
+  }
+
+  /* ---- telemetry typography ---- */
+  .telemetry {
+    font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums;
+    letter-spacing: 0.02em;
+  }
+
+  /* ---- scanline sweep used by the analysis overlay ---- */
+  .scanline {
+    position: absolute;
+    left: 0;
+    right: 0;
+    height: 28%;
+    background: linear-gradient(
+      180deg,
+      rgb(var(--accent) / 0) 0%,
+      var(--scanline-color) 50%,
+      rgb(var(--accent) / 0) 100%
+    );
+    @apply animate-scan pointer-events-none;
+  }
+}
+
+/* ========================================================================== */
+/*  Cesium integration                                                        */
+/* ========================================================================== */
+
+/* The viewer must fill its host box; Cesium's own CSS handles the internals. */
+.cesium-host,
+.cesium-host .cesium-viewer,
+.cesium-host .cesium-viewer-cesiumWidgetContainer,
+.cesium-host .cesium-widget,
+.cesium-host .cesium-widget canvas {
+  width: 100% !important;
+  height: 100% !important;
+}
+
+/* We render attribution ourselves in the footer, so Cesium's box is detached. */
+.cesium-credit-sink {
+  display: none !important;
+}
+
+/* Ground primitives should not swallow pointer events meant for our chrome. */
+.cesium-widget canvas {
+  touch-action: none;
+  outline: none;
+}
+
+/* Vignette over the globe. Kept in CSS rather than as an arbitrary Tailwind
+   value so the two themes can differ: the edge darkening that makes chrome
+   legible over dark imagery becomes a soft haze over a pale one. */
+.globe-vignette {
+  background: radial-gradient(120% 90% at 50% 0%, transparent 35%, var(--vignette-edge) 100%);
+}
+
+/* ========================================================================== */
+/*  Recharts theming                                                          */
+/* ========================================================================== */
+/*
+ * Recharts writes its colours as SVG *presentation attributes*, which cannot
+ * read CSS variables. CSS declarations outrank presentation attributes, so the
+ * plot furniture is themed here and no chart component needs a theme branch.
+ *
+ * The exceptions â€” a categorical palette chosen per data index, and the
+ * background painted behind an exported PNG â€” cannot be expressed in CSS and are
+ * resolved in `src/lib/chartTheme.ts` instead.
+ */
+
+.recharts-wrapper:focus,
+.recharts-surface:focus {
+  outline: none;
+}
+
+.recharts-cartesian-axis-line,
+.recharts-cartesian-axis-tick-line {
+  stroke: rgb(var(--hairline) / 0.4);
+}
+
+.recharts-cartesian-axis-tick-value,
+.recharts-cartesian-axis-tick-value tspan {
+  fill: rgb(var(--ink-muted));
+}
+
+.recharts-cartesian-grid line {
+  stroke: rgb(var(--hairline) / 0.5);
+}
+
+.recharts-legend-item-text {
+  color: rgb(var(--ink-muted));
+}
+
+.recharts-brush > rect {
+  fill: rgb(var(--accent) / 0.08);
+}
+
+.recharts-brush-slide {
+  fill: rgb(var(--hairline) / 0.12);
+}
+
+/* Recharts applies its default tooltip chrome as *inline* styles, so overriding
+   it here needs `!important` â€” the one place in the stylesheet that does. */
+.recharts-default-tooltip,
+.em-chart-tooltip .recharts-default-tooltip {
+  background-color: var(--surface-0) !important;
+  border: 1px solid rgb(var(--accent) / 0.3) !important;
+  border-radius: 10px !important;
+}
+
+.em-chart-tooltip .recharts-tooltip-label {
+  color: rgb(var(--ink-faint)) !important;
+  font-size: 9px !important;
+}
+
+.em-chart-tooltip .recharts-tooltip-item {
+  color: rgb(var(--ink)) !important;
+  font-size: 10px !important;
+}
+
+/* ========================================================================== */
+/*  Motion preferences                                                        */
+/* ========================================================================== */
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+}

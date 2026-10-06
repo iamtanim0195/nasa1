@@ -1,0 +1,44 @@
+{
+  "name": "earth-metamorphosis",
+  "version": "1.0.0",
+  "private": true,
+  "description": "EARTH-METAMORPHOSIS — NISAR-based Earth Observation & Change Detection Platform (frontend)",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "build:static": "cross-env BUILD_TARGET=static next build",
+    "build:preview": "cross-env BUILD_TARGET=static NEXT_RELATIVE_ASSETS=1 next build",
+    "preview": "npm run build:preview && node .tools/serve-out.mjs 3200",
+    "serve:out": "node .tools/serve-out.mjs 3200",
+    "start": "next start",
+    "typecheck": "tsc --noEmit",
+    "test:rotation": "tsc src/lib/cesium/rotation.ts --outDir .tools/.tmp --target es2022 --module commonjs --lib es2022,dom --skipLibCheck && node .tools/rotation-check.mjs",
+    "check:cesium": "node .tools/check-cesium-members.mjs"
+  },
+  "dependencies": {
+    "@tanstack/react-query": "5.64.1",
+    "axios": "1.7.9",
+    "clsx": "2.1.1",
+    "date-fns": "4.1.0",
+    "lucide-react": "0.469.0",
+    "next": "15.1.6",
+    "react": "19.0.0",
+    "react-dom": "19.0.0",
+    "recharts": "2.15.0",
+    "tailwind-merge": "2.6.0",
+    "zustand": "5.0.3"
+  },
+  "devDependencies": {
+    "@types/node": "22.10.7",
+    "@types/react": "19.0.7",
+    "@types/react-dom": "19.0.3",
+    "autoprefixer": "10.4.20",
+    "cross-env": "7.0.3",
+    "postcss": "8.4.49",
+    "tailwindcss": "3.4.17",
+    "typescript": "5.7.3"
+  },
+  "engines": {
+    "node": ">=18.18.0"
+  }
+}

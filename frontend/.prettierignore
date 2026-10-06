@@ -1,0 +1,16 @@
+﻿node_modules
+.next
+out
+build
+
+# Generated
+package-lock.json
+next-env.d.ts
+*.tsbuildinfo
+
+# Self-hosted Cesium runtime (a copy of node_modules/cesium/Build/Cesium)
+public/cesium
+
+# Long-form, hand-authored documentation. Prettier's markdown reflow adds little
+# here and risks disturbing the ASCII wireframes and hand-aligned tables.
+docs
