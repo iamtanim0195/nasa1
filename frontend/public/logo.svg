@@ -1,0 +1,35 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="EARTH-METAMORPHOSIS mark">
+  <defs>
+    <linearGradient id="em-stroke" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#27C9FF"/>
+      <stop offset="100%" stop-color="#B477FF"/>
+    </linearGradient>
+    <radialGradient id="em-core" cx="50%" cy="45%" r="55%">
+      <stop offset="0%" stop-color="#7FE2FF" stop-opacity="0.95"/>
+      <stop offset="60%" stop-color="#27C9FF" stop-opacity="0.35"/>
+      <stop offset="100%" stop-color="#040711" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+
+  <circle cx="32" cy="32" r="30" fill="#040711"/>
+  <circle cx="32" cy="32" r="29" fill="none" stroke="url(#em-stroke)" stroke-opacity="0.35" stroke-width="1"/>
+
+  <!-- planet -->
+  <circle cx="32" cy="32" r="13" fill="url(#em-core)" stroke="url(#em-stroke)" stroke-width="1.4"/>
+  <!-- meridian + parallel: reads as a globe without being a literal map -->
+  <ellipse cx="32" cy="32" rx="5.4" ry="13" fill="none" stroke="#27C9FF" stroke-opacity="0.55" stroke-width="0.9"/>
+  <path d="M19.4 27h25.2M19.4 37h25.2" stroke="#27C9FF" stroke-opacity="0.45" stroke-width="0.9" stroke-linecap="round"/>
+  <path d="M21 32h22" stroke="#27C9FF" stroke-opacity="0.3" stroke-width="0.9" stroke-linecap="round"/>
+
+  <!-- SAR orbit -->
+  <ellipse cx="32" cy="32" rx="24" ry="10" fill="none" stroke="url(#em-stroke)" stroke-width="1.6" transform="rotate(-28 32 32)"/>
+  <ellipse cx="32" cy="32" rx="24" ry="10" fill="none" stroke="#44FF9B" stroke-opacity="0.4" stroke-width="1" transform="rotate(34 32 32)"/>
+
+  <!-- sensor -->
+  <circle cx="53.5" cy="20.5" r="2.6" fill="#27C9FF"/>
+  <circle cx="53.5" cy="20.5" r="5.2" fill="none" stroke="#27C9FF" stroke-opacity="0.5" stroke-width="1"/>
+
+  <!-- change pulse -->
+  <circle cx="22" cy="43" r="1.9" fill="#FF8C42"/>
+  <circle cx="22" cy="43" r="4.4" fill="none" stroke="#FF8C42" stroke-opacity="0.45" stroke-width="1"/>
+</svg>

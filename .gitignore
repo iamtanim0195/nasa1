@@ -1,41 +1,97 @@
-# ================= Python =================
-venv/
+# ============================================
+# Root .gitignore (covers both backend/ & frontend/)
+# ============================================
+
+# ===== Python (Backend) =====
 __pycache__/
 *.py[cod]
 *$py.class
 *.so
 .Python
 build/
+develop-eggs/
 dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
 *.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
 
-# ================= Jupyter =================
-.ipynb_checkpoints/
+# Virtual environments
+.venv/
+venv/
+ENV/
+env/
+.python-version
 
-# ================= NISAR Data (LARGE FILES) =================
-# HDF5 files are 1.5+ GB, cannot be pushed to GitHub
-nisar_data/
+# Testing (Python)
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.mypy_cache/
+.ruff_cache/
+
+# Data files (বড় ফাইল)
 *.h5
 *.hdf5
+*.he5
+*.tif
+*.tiff
+*.nc
+data/
+outputs/
+*.geojson
+*.geotiff
+*.png
+*.jpg
+!docs/**/*.png
+!docs/**/*.jpg
 
-# ================= Output (Regenerable) =================
-# These are regenerated from source code, so no need to commit
-output/*.npy
-output/*.tif
-output/*.png
+# ===== Node (Frontend) =====
+node_modules/
+.next/
+out/
+build/
+.vercel
+*.tsbuildinfo
+next-env.d.ts
+coverage/
 
-# ================= IDE / Editor =================
-.vscode/
+# ===== Environment files =====
+.env
+.env.local
+.env*.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# ===== OS / Editor =====
+.DS_Store
+Thumbs.db
+*.pem
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+.vscode/*
+!.vscode/extensions.json
 .idea/
 *.swp
 *.swo
 
-# ================= OS =================
-.DS_Store
-Thumbs.db
+# ===== Self-hosted Cesium (frontend) =====
+public/cesium
+.tools/.tmp
 
-# ================= Auth (NEVER COMMIT) =================
-.netrc
-_netrc
-*.netrc
-.env
+# ===== Jupyter =====
+.ipynb_checkpoints/
