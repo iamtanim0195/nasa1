@@ -1,5 +1,5 @@
 # ============================================
-# Root .gitignore (covers both backend/ & frontend/)
+# NASA1 — NISAR Flood Watch Bangladesh
 # ============================================
 
 # ===== Python (Backend) =====
@@ -40,7 +40,7 @@ htmlcov/
 .mypy_cache/
 .ruff_cache/
 
-# Data files (বড় ফাইল)
+# Data files (large)
 *.h5
 *.hdf5
 *.he5
@@ -51,10 +51,6 @@ data/
 outputs/
 *.geojson
 *.geotiff
-*.png
-*.jpg
-!docs/**/*.png
-!docs/**/*.jpg
 
 # ===== Node (Frontend) =====
 node_modules/
@@ -83,15 +79,25 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
-.vscode/*
+.vscode/
 !.vscode/extensions.json
 .idea/
 *.swp
 *.swo
 
 # ===== Self-hosted Cesium (frontend) =====
-public/cesium
-.tools/.tmp
+frontend/public/cesium
+frontend/.tools/.tmp/
 
 # ===== Jupyter =====
 .ipynb_checkpoints/
+
+# ===== Local scripts (DO NOT COMMIT) =====
+*.ps1
+!frontend/.tools/*.ps1
+*.sh
+!frontend/.tools/*.sh
+fe2-workflow.ps1
+fe1-workflow.ps1
+fe2-workflow.sh
+fe1-workflow.sh

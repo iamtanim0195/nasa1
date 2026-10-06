@@ -32,23 +32,12 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 
-# self-hosted Cesium runtime (copy of node_modules/cesium/Build/Cesium)
+# self-hosted Cesium runtime
 /public/cesium
 
-# Compiled output of the verification helpers
+# verification helpers
 /.tools/.tmp
 
-# Vercel
-.vercel
-
-# Testing
-/coverage
-
-# Editor
-.vscode/*
-!.vscode/extensions.json
-.idea/
-
-# OS
-*.swp
-*.swo
+# vscode (keep only extensions.json)
+/.vscode/*
+!/.vscode/extensions.json
