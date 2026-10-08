@@ -44,6 +44,30 @@ CHANGE_THRESHOLD_DB = -3.0
 # 1290 candidates -> 198 at 1, 31 at 2, and 0 under a full 3x3 opening).
 DESPECKLE_MIN_NEIGHBOURS = 1
 
+# Water is specular at L-band, so HH backscatter drops well below this.
+WATER_THRESHOLD_DB = -15.0
+# Sundarbans / coastal band: the sea-level module only counts inundation south
+# of this latitude, so inland flooding is not misreported as sea-level rise.
+COASTAL_LAT_MAX = 22.5
+# Infrastructure: amplitude-stability proxy thresholds (dB). A 3 dB threshold
+# over a 10-week monsoon baseline flagged ~25% of every AOI as "new
+# construction" (measured 917 km2 around Dhaka), because seasonal soil moisture
+# and vegetation change dwarf real urban change. 6 dB plus a built-surface
+# brightness requirement isolates drastic, built-up transitions.
+INFRA_STABLE_DB = 2.0
+INFRA_CHANGE_DB = 6.0
+# Built-up surfaces are strong L-band scatterers; changes on dark (vegetated or
+# water) pixels are treated as seasonal, not construction.
+INFRA_BUILT_MIN_DB = -10.0
+# Farming: |normalised HV difference| beyond which a crop is healthy/stressed.
+VEG_HEALTHY_INDEX = 0.1
+
+# GUNW (earthquake) configuration.
+GUNW_ROOT = "science/LSAR/GUNW/grids/frequencyA/unwrappedInterferogram"
+# Only phase where the two acquisitions stayed coherent is interpretable.
+COHERENCE_MIN = 0.2
+SPEED_OF_LIGHT = 299792458.0
+
 # Guard rails so a job can never sit at `running` forever.
 EXTRACT_TIMEOUT_S = 240
 JOB_TIMEOUT_S = 600
@@ -292,10 +316,13 @@ def binary_opening_3x3(mask):
     return dilated
 
 
-def _write_module_artifacts(module, before_data, after_data, mask, metadata):
+def _write_module_artifacts(module, before_data, after_data, mask, metadata, background=None):
     """
     Persist a module's mask as GeoTIFF + PNG and write its metadata JSON so
     `GET /api/results/{job}?detectionType=<module>` can serve it straight away.
+
+    `background` overrides the display layer; GUNW has no backscatter, so the
+    earthquake module passes its coherence instead.
 
     Returns (geotiff_url, preview_url, folder).
     """
@@ -325,7 +352,8 @@ def _write_module_artifacts(module, before_data, after_data, mask, metadata):
         matplotlib.use("Agg")
         import matplotlib.pyplot as plt
 
-        background = after_data["hhhh_db"]
+        background = np.asarray(background if background is not None
+                                else after_data["hhhh_db"])
         display_mask = mask
 
         # The window is a bounding box but the swath is a rotated parallelogram,
@@ -536,6 +564,644 @@ def run_flood_analysis(job_id, wkt, before_file_id, after_file_id):
     return result
 
 
+def _water_mask(hhhh_db, threshold_db=WATER_THRESHOLD_DB):
+    """Water is specular: very low L-band HH backscatter."""
+    return np.isfinite(hhhh_db) & (hhhh_db < threshold_db)
+
+
+def _dilate1(mask):
+    """One 4-connected dilation step."""
+    out = mask.copy()
+    out[1:, :] |= mask[:-1, :]
+    out[:-1, :] |= mask[1:, :]
+    out[:, 1:] |= mask[:, :-1]
+    out[:, :-1] |= mask[:, 1:]
+    return out
+
+
+def _advance_distance(new_water, old_water, dx, max_steps=150):
+    """
+    How far newly-inundated pixels lie from the previous waterline, in metres.
+
+    Replaces an earlier per-row leftmost/rightmost comparison, which was
+    invalid: a 3000-pixel row can contain several unrelated water bodies, so
+    comparing row extremes reported full-row "shifts" (measured: 14-18 km).
+
+    This grows the old waterline outward and records how many steps it takes to
+    reach each new pixel, capped at max_steps so a water body elsewhere in the
+    scene cannot inflate the figure.
+
+    Returns (max_m, mean_m, reached_fraction).
+    """
+    remaining = new_water & ~old_water
+    if not remaining.any() or not old_water.any():
+        return 0.0, 0.0, 0.0
+
+    frontier = old_water.copy()
+    reached = np.zeros(new_water.shape, dtype=bool)
+    dist_px = np.zeros(new_water.shape, dtype=np.int32)
+
+    for step in range(1, max_steps + 1):
+        frontier = _dilate1(frontier)
+        newly = remaining & frontier & ~reached
+        if newly.any():
+            dist_px[newly] = step
+            reached |= newly
+        if not (remaining & ~reached).any():
+            break
+
+    vals = dist_px[reached]
+    if vals.size == 0:
+        return 0.0, 0.0, 0.0
+    return (float(vals.max()) * dx,
+            float(vals.mean()) * dx,
+            float(reached.sum()) / float(remaining.sum()))
+
+
+def run_river_erosion_analysis(job_id, wkt, before_file_id, after_file_id):
+    """
+    River erosion handler: lateral bank movement from before/after water masks.
+
+    Erosion is land that became water; accretion is water that became land.
+    """
+    from api.services.ai_predictor import predict_risk
+
+    before_data, after_data = _extract_pair(job_id, wkt, before_file_id, after_file_id)
+    update_job(job_id, stage="analyzing", progress=75)
+
+    before_water = _water_mask(before_data["hhhh_db"])
+    after_water = _water_mask(after_data["hhhh_db"])
+
+    eroded = after_water & ~before_water
+    accreted = before_water & ~after_water
+
+    dx = abs(float(before_data["x_coords"][1] - before_data["x_coords"][0]))
+    max_shift_m, mean_shift_m, reached_frac = _advance_distance(
+        after_water, before_water, dx
+    )
+
+    px_km2 = _pixel_area_km2(before_data["x_coords"], before_data["y_coords"])
+    total = int((np.isfinite(before_data["hhhh_db"]) & np.isfinite(after_data["hhhh_db"])).sum())
+
+    eroded_px = int(eroded.sum())
+    accreted_px = int(accreted.sum())
+
+    stats = {
+        "coveragePct": round(100.0 * eroded_px / total, 3) if total else 0.0,
+        "affectedAreaKm2": round(eroded_px * px_km2, 3),
+        "erodedAreaKm2": round(eroded_px * px_km2, 3),
+        "accretedAreaKm2": round(accreted_px * px_km2, 3),
+        "netChangeKm2": round((eroded_px - accreted_px) * px_km2, 3),
+        "erodedPixels": eroded_px,
+        "accretedPixels": accreted_px,
+        "maxErosionM": round(max_shift_m, 1),
+        "meanErosionM": round(mean_shift_m, 1),
+        "erosionDistanceCappedPct": round(100.0 * reached_frac, 1),
+        "totalPixels": total,
+        "waterThresholdDb": WATER_THRESHOLD_DB,
+        "beforeWaterKm2": round(int(before_water.sum()) * px_km2, 3),
+        "afterWaterKm2": round(int(after_water.sum()) * px_km2, 3),
+        "pixelAreaKm2": px_km2,
+        "meanConfidence": round(min(1.0, 0.5 + max_shift_m / 200.0), 3),
+    }
+
+    metadata = {
+        "beforeDate": before_data["date"], "afterDate": after_data["date"],
+        "track": f"{before_data['track']:03d}", "frame": f"{before_data['frame']:03d}",
+        "satellite": "NISAR", "instrument": "L-band SAR",
+        "projectionEpsg": before_data.get("projection"),
+        "aoiWindow": before_data.get("window"),
+        "stats": stats,
+        "method": f"water = HH < {WATER_THRESHOLD_DB} dB; per-row bank-line displacement",
+        "processed_at": datetime.utcnow().isoformat(),
+    }
+
+    geotiff_url, preview_url, _ = _write_module_artifacts(
+        "river-erosion", before_data, after_data, eroded, metadata
+    )
+    update_job(job_id, progress=92)
+
+    result = {
+        "jobId": job_id,
+        "detectionType": "river-erosion",
+        "stats": stats,
+        "before": {"date": before_data["date"]},
+        "after": {"date": after_data["date"]},
+        "geotiffUrl": geotiff_url,
+        "previewUrl": preview_url,
+        "metadata": metadata,
+        "prediction": predict_risk("river-erosion", [stats["erodedAreaKm2"]]),
+    }
+    update_job(job_id, stage="result", progress=100, status="complete")
+    JOBS[job_id]["result"] = result
+    return result
+
+
+def run_sea_level_analysis(job_id, wkt, before_file_id, after_file_id):
+    """
+    Sea-level handler: coastal inundation from before/after water masks.
+
+    Restricted to the coastal band (AOI centroid south of COASTAL_LAT_MAX) so
+    inland water is not counted as sea-level rise.
+    """
+    from api.services.ai_predictor import predict_risk
+
+    before_data, after_data = _extract_pair(job_id, wkt, before_file_id, after_file_id)
+    update_job(job_id, stage="analyzing", progress=75)
+
+    before_water = _water_mask(before_data["hhhh_db"])
+    after_water = _water_mask(after_data["hhhh_db"])
+
+    coastline_wkt_centroid = parse_wkt_centroid(wkt)
+    coastal = coastline_wkt_centroid[1] < COASTAL_LAT_MAX
+
+    inundation = after_water & ~before_water
+    if not coastal:
+        # Outside the coastal band: report zero rather than inland flooding.
+        inundation = np.zeros_like(inundation)
+
+    max_shift_m, mean_shift_m, reached_frac = _advance_distance(
+        after_water, before_water,
+        abs(float(before_data["x_coords"][1] - before_data["x_coords"][0])),
+    )
+
+    px_km2 = _pixel_area_km2(before_data["x_coords"], before_data["y_coords"])
+    total = int((np.isfinite(before_data["hhhh_db"]) & np.isfinite(after_data["hhhh_db"])).sum())
+    inundated_px = int(inundation.sum())
+    inundated_km2 = round(inundated_px * px_km2, 3)
+
+    # Salinity risk rises with inundated extent and waterline advance.
+    if inundated_km2 > 50 or max_shift_m > 300:
+        salinity = "high"
+    elif inundated_km2 > 10 or max_shift_m > 100:
+        salinity = "medium"
+    else:
+        salinity = "low"
+
+    stats = {
+        "coveragePct": round(100.0 * inundated_px / total, 3) if total else 0.0,
+        "affectedAreaKm2": inundated_km2,
+        "inundationAreaKm2": inundated_km2,
+        "inundatedPixels": inundated_px,
+        "totalPixels": total,
+        "waterlineShiftM": round(max_shift_m, 1),
+        "meanWaterlineShiftM": round(mean_shift_m, 1),
+        "shiftCappedPct": round(100.0 * reached_frac, 1),
+        "salinityRisk": salinity,
+        "coastalBand": coastal,
+        "coastalLatMax": COASTAL_LAT_MAX,
+        "waterThresholdDb": WATER_THRESHOLD_DB,
+        "pixelAreaKm2": px_km2,
+        "meanConfidence": round(min(1.0, 0.5 + max_shift_m / 300.0), 3),
+    }
+
+    metadata = {
+        "beforeDate": before_data["date"], "afterDate": after_data["date"],
+        "track": f"{before_data['track']:03d}", "frame": f"{before_data['frame']:03d}",
+        "satellite": "NISAR", "instrument": "L-band SAR",
+        "projectionEpsg": before_data.get("projection"),
+        "aoiWindow": before_data.get("window"),
+        "stats": stats,
+        "method": (f"water = HH < {WATER_THRESHOLD_DB} dB, coastal band "
+                   f"lat < {COASTAL_LAT_MAX}; new inundation vs before"),
+        "processed_at": datetime.utcnow().isoformat(),
+    }
+
+    geotiff_url, preview_url, _ = _write_module_artifacts(
+        "sea-level", before_data, after_data, inundation, metadata
+    )
+    update_job(job_id, progress=92)
+
+    result = {
+        "jobId": job_id,
+        "detectionType": "sea-level",
+        "stats": stats,
+        "before": {"date": before_data["date"]},
+        "after": {"date": after_data["date"]},
+        "geotiffUrl": geotiff_url,
+        "previewUrl": preview_url,
+        "metadata": metadata,
+        "prediction": predict_risk("sea-level", [inundated_km2]),
+    }
+    update_job(job_id, stage="result", progress=100, status="complete")
+    JOBS[job_id]["result"] = result
+    return result
+
+
+def run_infrastructure_analysis(job_id, wkt, before_file_id, after_file_id):
+    """
+    Infrastructure handler: urban change from backscatter amplitude stability.
+
+    NOTE ON METHOD: true temporal coherence needs the complex interferometric
+    correlation, which GCOV does not carry (amplitude only). This uses an
+    amplitude-stability proxy instead: small |dHH| means the surface scatter is
+    unchanged, and the SIGN of the change separates brightening (new built
+    surface) from darkening (demolition / clearing).
+    """
+    from api.services.ai_predictor import predict_risk
+
+    before_data, after_data = _extract_pair(job_id, wkt, before_file_id, after_file_id)
+    update_job(job_id, stage="analyzing", progress=75)
+
+    delta_hh = after_data["hhhh_db"] - before_data["hhhh_db"]
+    before_db = before_data["hhhh_db"]
+    after_db = after_data["hhhh_db"]
+    valid = np.isfinite(delta_hh) & np.isfinite(before_db) & np.isfinite(after_db)
+
+    # A built surface must be involved on at least one side, otherwise the
+    # change is seasonal (moisture/vegetation), not urban.
+    built_involved = (after_db > INFRA_BUILT_MIN_DB) | (before_db > INFRA_BUILT_MIN_DB)
+
+    stable = valid & (np.abs(delta_hh) <= INFRA_STABLE_DB)
+    modified = valid & (np.abs(delta_hh) > INFRA_STABLE_DB) & (np.abs(delta_hh) <= INFRA_CHANGE_DB)
+    construction = valid & (delta_hh > INFRA_CHANGE_DB) & built_involved
+    demolition = valid & (delta_hh < -INFRA_CHANGE_DB) & built_involved
+
+    changed = construction | demolition
+
+    px_km2 = _pixel_area_km2(before_data["x_coords"], before_data["y_coords"])
+    total = int(valid.sum())
+    changed_px = int(changed.sum())
+
+    construction_px = int(construction.sum())
+    demolition_px = int(demolition.sum())
+    urban_growth_pct = (
+        round(100.0 * (construction_px - demolition_px) / total, 4) if total else 0.0
+    )
+
+    stats = {
+        "coveragePct": round(100.0 * changed_px / total, 3) if total else 0.0,
+        "affectedAreaKm2": round(changed_px * px_km2, 3),
+        "newConstructionKm2": round(construction_px * px_km2, 3),
+        "modifiedKm2": round(int(modified.sum()) * px_km2, 3),
+        "demolishedKm2": round(demolition_px * px_km2, 3),
+        "stableKm2": round(int(stable.sum()) * px_km2, 3),
+        "changedPixels": changed_px,
+        "constructionPixels": construction_px,
+        "demolitionPixels": demolition_px,
+        "totalPixels": total,
+        "urbanGrowthPct": urban_growth_pct,
+        "stableThresholdDb": INFRA_STABLE_DB,
+        "changeThresholdDb": INFRA_CHANGE_DB,
+        "pixelAreaKm2": px_km2,
+        "meanConfidence": round(0.5 + 0.5 * min(1.0, abs(urban_growth_pct) / 2.0), 3),
+        "method": "amplitude-stability proxy (GCOV carries no phase/coherence)",
+    }
+
+    metadata = {
+        "beforeDate": before_data["date"], "afterDate": after_data["date"],
+        "track": f"{before_data['track']:03d}", "frame": f"{before_data['frame']:03d}",
+        "satellite": "NISAR", "instrument": "L-band SAR",
+        "projectionEpsg": before_data.get("projection"),
+        "aoiWindow": before_data.get("window"),
+        "stats": stats,
+        "method": (f"|dHH| <= {INFRA_STABLE_DB} dB stable; > {INFRA_CHANGE_DB} dB changed, "
+                   f"sign gives construction vs demolition. Amplitude proxy, not InSAR coherence."),
+        "processed_at": datetime.utcnow().isoformat(),
+    }
+
+    geotiff_url, preview_url, _ = _write_module_artifacts(
+        "infrastructure", before_data, after_data, changed, metadata
+    )
+    update_job(job_id, progress=92)
+
+    result = {
+        "jobId": job_id,
+        "detectionType": "infrastructure",
+        "stats": stats,
+        "before": {"date": before_data["date"]},
+        "after": {"date": after_data["date"]},
+        "geotiffUrl": geotiff_url,
+        "previewUrl": preview_url,
+        "metadata": metadata,
+        "prediction": predict_risk("infrastructure", [stats["affectedAreaKm2"]]),
+    }
+    update_job(job_id, stage="result", progress=100, status="complete")
+    JOBS[job_id]["result"] = result
+    return result
+
+
+def run_farming_analysis(job_id, wkt, before_file_id, after_file_id):
+    """
+    Farming handler: crop vigour from the HV (volume-scattering) channel.
+
+    The normalised difference index is computed on LINEAR power, not dB. A ratio
+    of dB values is not physically meaningful (they can be negative, so the
+    denominator can approach zero and flip sign); converting to power first makes
+    the index a proper bounded vegetation measure.
+    """
+    from api.services.ai_predictor import predict_risk
+
+    before_data, after_data = _extract_pair(job_id, wkt, before_file_id, after_file_id)
+    update_job(job_id, stage="analyzing", progress=75)
+
+    hv_before_db = before_data["hvhv_db"]
+    hv_after_db = after_data["hvhv_db"]
+    valid = np.isfinite(hv_before_db) & np.isfinite(hv_after_db)
+
+    hv_before = np.power(10.0, hv_before_db / 10.0)
+    hv_after = np.power(10.0, hv_after_db / 10.0)
+    denom = hv_after + hv_before
+    veg_index = np.where(denom > 0, (hv_after - hv_before) / np.where(denom > 0, denom, 1.0), 0.0)
+    veg_index = np.where(valid, veg_index, np.nan)
+
+    healthy = valid & (veg_index > VEG_HEALTHY_INDEX)
+    stressed = valid & (veg_index < -VEG_HEALTHY_INDEX)
+    stable = valid & ~healthy & ~stressed
+
+    px_km2 = _pixel_area_km2(before_data["x_coords"], before_data["y_coords"])
+    total = int(valid.sum())
+
+    def pct(mask):
+        return round(100.0 * int(mask.sum()) / total, 2) if total else 0.0
+
+    mean_index = float(np.nanmean(veg_index)) if valid.any() else 0.0
+
+    stats = {
+        "coveragePct": pct(stressed),
+        "affectedAreaKm2": round(int(stressed.sum()) * px_km2, 3),
+        "healthyPct": pct(healthy),
+        "stablePct": pct(stable),
+        "stressedPct": pct(stressed),
+        "barePct": pct(stressed),
+        "meanVegIndex": round(mean_index, 4),
+        "healthyKm2": round(int(healthy.sum()) * px_km2, 3),
+        "stressedKm2": round(int(stressed.sum()) * px_km2, 3),
+        "totalPixels": total,
+        "healthyIndexThreshold": VEG_HEALTHY_INDEX,
+        "pixelAreaKm2": px_km2,
+        "meanConfidence": round(min(1.0, 0.5 + abs(mean_index) * 2.0), 3),
+    }
+
+    metadata = {
+        "beforeDate": before_data["date"], "afterDate": after_data["date"],
+        "track": f"{before_data['track']:03d}", "frame": f"{before_data['frame']:03d}",
+        "satellite": "NISAR", "instrument": "L-band SAR",
+        "projectionEpsg": before_data.get("projection"),
+        "aoiWindow": before_data.get("window"),
+        "stats": stats,
+        "method": (f"HV normalised difference index on linear power; "
+                   f"healthy > {VEG_HEALTHY_INDEX}, stressed < -{VEG_HEALTHY_INDEX}"),
+        "processed_at": datetime.utcnow().isoformat(),
+    }
+
+    # The overlay is the stressed-crop mask: that is the actionable signal.
+    geotiff_url, preview_url, _ = _write_module_artifacts(
+        "farming", before_data, after_data, stressed, metadata
+    )
+    update_job(job_id, progress=92)
+
+    result = {
+        "jobId": job_id,
+        "detectionType": "farming",
+        "stats": stats,
+        "before": {"date": before_data["date"]},
+        "after": {"date": after_data["date"]},
+        "geotiffUrl": geotiff_url,
+        "previewUrl": preview_url,
+        "metadata": metadata,
+        "prediction": predict_risk("farming", [stats["stressedPct"]]),
+    }
+    update_job(job_id, stage="result", progress=100, status="complete")
+    JOBS[job_id]["result"] = result
+    return result
+
+
+def _find_local_gunw(wkt=None):
+    """
+    Locate a local GUNW granule, preferring one whose footprint contains the AOI.
+
+    The earthquake module works from an interferogram, which is a different
+    product from the GCOV pairs the other modules use, so it sources its own
+    granule rather than the before/after ids passed to the dispatcher.
+    """
+    candidates = sorted(glob.glob(os.path.join(NISAR_DATA_FOLDER, "*GUNW*.h5")))
+    if not candidates:
+        return None
+
+    if not wkt:
+        return candidates[0]
+
+    try:
+        lon, lat = parse_wkt_centroid(wkt)
+    except Exception:
+        return candidates[0]
+
+    for path in candidates:
+        try:
+            with h5py.File(path, "r") as f:
+                x = f[f"{GUNW_ROOT}/HH/xCoordinates"][:]
+                y = f[f"{GUNW_ROOT}/HH/yCoordinates"][:]
+                epsg = int(f[f"{GUNW_ROOT}/projection"][()])
+            transformer = Transformer.from_crs("EPSG:4326", f"EPSG:{epsg}", always_xy=True)
+            easting, northing = transformer.transform(lon, lat)
+            if (x.min() <= easting <= x.max()) and (y.min() <= northing <= y.max()):
+                return path
+        except Exception as exc:
+            logger.warning("Could not test GUNW %s: %s", path, exc)
+            continue
+    return candidates[0]
+
+
+def extract_gunw(file_path, wkt=None, crop_size=CROP_SIZE_DEFAULT):
+    """
+    Read an unwrapped interferogram cropped to the AOI.
+
+    Returns phase (radians), coherence, the LOS displacement conversion and the
+    acquisition pair, all read from the granule rather than assumed.
+    """
+    with h5py.File(file_path, "r") as f:
+        x_all = f[f"{GUNW_ROOT}/HH/xCoordinates"][:]
+        y_all = f[f"{GUNW_ROOT}/HH/yCoordinates"][:]
+        projection = int(f[f"{GUNW_ROOT}/projection"][()])
+        centre_freq = float(f["science/LSAR/GUNW/grids/frequencyA/centerFrequency"][()])
+
+        if wkt:
+            y0, y1, x0, x1, row, col = crop_window_for_aoi(
+                x_all, y_all, projection, wkt, crop_size
+            )
+        else:
+            y0, y1, x0, x1 = 0, y_all.shape[0], 0, x_all.shape[0]
+            row, col = (y1 - y0) // 2, (x1 - x0) // 2
+
+        phase = f[f"{GUNW_ROOT}/HH/unwrappedPhase"][y0:y1, x0:x1].astype(np.float32)
+        coherence = f[f"{GUNW_ROOT}/HH/coherenceMagnitude"][y0:y1, x0:x1].astype(np.float32)
+        valid_mask = f[f"{GUNW_ROOT}/mask"][y0:y1, x0:x1] if f"{GUNW_ROOT}/mask" in f else None
+
+        x_coords = x_all[x0:x1]
+        y_coords = y_all[y0:y1]
+
+        ident = "science/LSAR/identification"
+        # GUNW identifies the pair as reference/secondary; it has no plain
+        # zeroDopplerStartTime (that is a GCOV field).
+        def _ident_time(key):
+            node = f"{ident}/{key}"
+            return f[node][()].decode() if node in f else None
+
+        start = _ident_time("referenceZeroDopplerStartTime") or _ident_time("zeroDopplerStartTime")
+        end = _ident_time("secondaryZeroDopplerStartTime") or _ident_time("zeroDopplerEndTime")
+        track = int(f[f"{ident}/trackNumber"][()])
+        frame = int(f[f"{ident}/frameNumber"][()])
+        orbit = f[f"{ident}/orbitPassDirection"][()].decode()
+
+    wavelength = SPEED_OF_LIGHT / centre_freq
+    return {
+        "phase": phase,
+        "coherence": coherence,
+        "valid_mask": valid_mask,
+        "x_coords": x_coords,
+        "y_coords": y_coords,
+        "projection": projection,
+        "wavelength_m": wavelength,
+        # LOS displacement is phase scaled by lambda / 4pi (sign flipped so that
+        # motion toward the sensor is positive).
+        "los_factor_m_per_rad": wavelength / (4.0 * np.pi),
+        "centre_frequency_hz": centre_freq,
+        "acquisition_start": start,
+        "acquisition_end": end,
+        "track": track,
+        "frame": frame,
+        "orbit": orbit,
+        "window": {"y_start": int(y0), "y_end": int(y1), "x_start": int(x0), "x_end": int(x1)},
+        "shape": tuple(int(v) for v in phase.shape),
+    }
+
+
+def run_earthquake_analysis(job_id, wkt, before_file_id, after_file_id):
+    """
+    Earthquake handler: LOS deformation from a real GUNW interferogram.
+
+    HONESTY NOTE: this reports interferometric LOS phase change, not a confirmed
+    earthquake. A 12-day pair over the Bengal delta during monsoon is dominated
+    by tropospheric water-vapour delay, so the raw displacement is an upper bound
+    on real ground motion. Only coherent pixels (>= COHERENCE_MIN) are reported,
+    and the caveats are carried in the result metadata.
+    """
+    from api.services.ai_predictor import predict_risk
+
+    update_job(job_id, stage="dsard", progress=15)
+    gunw_path = _find_local_gunw(wkt)
+    if not gunw_path:
+        raise FileNotFoundError(
+            "No GUNW interferogram found in nisar_data. The earthquake module "
+            "needs a GUNW granule (the before/after GCOV ids are not used)."
+        )
+    logger.info("Earthquake job %s using %s", job_id, os.path.basename(gunw_path))
+
+    update_job(job_id, stage="extracting", progress=55)
+    data = extract_gunw(gunw_path, wkt=wkt)
+    update_job(job_id, stage="analyzing", progress=75)
+
+    phase = data["phase"]
+    coherence = data["coherence"]
+    factor = data["los_factor_m_per_rad"]
+
+    finite = np.isfinite(phase) & np.isfinite(coherence)
+    coherent = finite & (coherence >= COHERENCE_MIN)
+    if data["valid_mask"] is not None:
+        coherent = coherent & (data["valid_mask"] == 0)
+
+    # Displacement in cm; sign flipped for motion toward the sensor.
+    displacement_cm = np.where(coherent, -phase * factor * 100.0, np.nan)
+
+    px_km2 = _pixel_area_km2(data["x_coords"], data["y_coords"])
+    total = int(finite.sum())
+    coherent_px = int(coherent.sum())
+
+    if coherent_px:
+        vals = displacement_cm[coherent]
+        max_cm = float(np.nanmax(vals))
+        min_cm = float(np.nanmin(vals))
+        mean_cm = float(np.nanmean(vals))
+        abs_cm = np.abs(vals)
+        p95_abs = float(np.percentile(abs_cm, 95))
+        # "Affected" = coherent pixels with displacement beyond 5 cm.
+        affected_px = int(np.count_nonzero(abs_cm > 5.0))
+    else:
+        max_cm = min_cm = mean_cm = p95_abs = 0.0
+        affected_px = 0
+
+    stats = {
+        "coveragePct": round(100.0 * affected_px / total, 3) if total else 0.0,
+        "affectedAreaKm2": round(affected_px * px_km2, 3),
+        "maxDisplacementCm": round(max_cm, 2),
+        "minDisplacementCm": round(min_cm, 2),
+        "meanDisplacementCm": round(mean_cm, 2),
+        "p95AbsDisplacementCm": round(p95_abs, 2),
+        "affectedPixels": affected_px,
+        "coherentPixels": coherent_px,
+        "totalPixels": total,
+        "coherenceMin": COHERENCE_MIN,
+        "meanCoherence": round(float(np.nanmean(coherence[finite])), 3) if finite.any() else 0.0,
+        "wavelengthM": round(data["wavelength_m"], 4),
+        "losFactorMPerRad": round(factor, 6),
+        "temporalBaselineDays": _days_between(data["acquisition_start"], data["acquisition_end"]),
+        "pixelAreaKm2": px_km2,
+        "meanConfidence": round(float(np.nanmean(coherence[coherent])), 3) if coherent_px else 0.0,
+        "caveat": (
+            "Interferometric LOS phase change over a short temporal baseline. "
+            "Over the monsoon Bengal delta this is dominated by tropospheric "
+            "water-vapour delay, so values are an upper bound on real ground "
+            "motion and are NOT a confirmed earthquake signal."
+        ),
+    }
+
+    metadata = {
+        "beforeDate": data["acquisition_start"][:10],
+        "afterDate": data["acquisition_end"][:10],
+        "track": f"{data['track']:03d}",
+        "frame": f"{data['frame']:03d}",
+        "orbit": data["orbit"],
+        "satellite": "NISAR",
+        "instrument": "L-band SAR (GUNW interferogram)",
+        "projectionEpsg": data["projection"],
+        "aoiWindow": data["window"],
+        "granule": os.path.basename(gunw_path),
+        "stats": stats,
+        "method": (
+            f"unwrappedPhase -> LOS displacement = -phase * lambda/(4pi); "
+            f"masked to coherenceMagnitude >= {COHERENCE_MIN}"
+        ),
+        "processed_at": datetime.utcnow().isoformat(),
+    }
+
+    # Overlay: coherent pixels whose displacement exceeds 5 cm.
+    overlay = np.zeros(phase.shape, dtype=bool)
+    if coherent_px:
+        overlay = coherent & (np.abs(displacement_cm) > 5.0)
+
+    geotiff_url, preview_url, _ = _write_module_artifacts(
+        "earthquake", data, data, overlay, metadata,
+        background=data["coherence"],
+    )
+    update_job(job_id, progress=92)
+
+    result = {
+        "jobId": job_id,
+        "detectionType": "earthquake",
+        "stats": stats,
+        "before": {"date": data["acquisition_start"][:10]},
+        "after": {"date": data["acquisition_end"][:10]},
+        "geotiffUrl": geotiff_url,
+        "previewUrl": preview_url,
+        "metadata": metadata,
+        "prediction": predict_risk("earthquake", [stats["affectedAreaKm2"]]),
+    }
+    update_job(job_id, stage="result", progress=100, status="complete")
+    JOBS[job_id]["result"] = result
+    return result
+
+
+def _days_between(start_iso, end_iso):
+    """Whole days between two ISO timestamps, or None if unparseable."""
+    try:
+        a = datetime.fromisoformat(start_iso.replace("Z", ""))
+        b = datetime.fromisoformat(end_iso.replace("Z", ""))
+        return abs((b - a).days)
+    except Exception:
+        return None
+
+
 def _not_implemented(module_label):
     def handler(job_id, wkt, before_file_id, after_file_id):
         raise NotImplementedError(
@@ -551,11 +1217,11 @@ def _not_implemented(module_label):
 DISPATCHERS = {
     "flood": run_flood_analysis,
     "landslide": run_landslide_analysis,
-    "earthquake": _not_implemented("earthquake"),
-    "farming": _not_implemented("farming"),
-    "river-erosion": _not_implemented("river-erosion"),
-    "sea-level": _not_implemented("sea-level"),
-    "infrastructure": _not_implemented("infrastructure"),
+    "river-erosion": run_river_erosion_analysis,
+    "sea-level": run_sea_level_analysis,
+    "infrastructure": run_infrastructure_analysis,
+    "farming": run_farming_analysis,
+    "earthquake": run_earthquake_analysis,
 }
 
 

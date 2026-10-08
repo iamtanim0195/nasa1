@@ -40,6 +40,11 @@ OUTPUT_FOLDER = os.path.join(PROJECT_ROOT, "output")
 MODULE_ARTIFACTS = {
     "flood": ("feni", "feni_metadata.json"),
     "landslide": ("landslide", "landslide_metadata.json"),
+    "river-erosion": ("river-erosion", "river-erosion_metadata.json"),
+    "sea-level": ("sea-level", "sea-level_metadata.json"),
+    "infrastructure": ("infrastructure", "infrastructure_metadata.json"),
+    "farming": ("farming", "farming_metadata.json"),
+    "earthquake": ("earthquake", "earthquake_metadata.json"),
 }
 
 # Cache: module -> {"stamp": (mtime, size), "payload": dict}
@@ -155,16 +160,41 @@ def _agreement_histogram(mask, delta_hh, delta_hv, tile=300):
     ]
 
 
-def _distribution_from_stats(stats):
+def _distribution_from_stats(module, stats):
     """
     Bar-chart series for modules that do not persist npy arrays.
 
-    Prefers a module-supplied `slopeBands` (landslide area by steepness) and
-    falls back to a plain detected/unchanged split.
+    Each module reports its own natural breakdown so the chart is informative
+    rather than a generic detected/unchanged split.
     """
     bands = stats.get("slopeBands")
     if bands:
         return [{"label": b["label"], "value": float(b["value"])} for b in bands]
+
+    if module == "infrastructure":
+        return [
+            {"label": "New construction", "value": float(stats.get("newConstructionKm2") or 0)},
+            {"label": "Modified", "value": float(stats.get("modifiedKm2") or 0)},
+            {"label": "Demolished", "value": float(stats.get("demolishedKm2") or 0)},
+            {"label": "Stable", "value": float(stats.get("stableKm2") or 0)},
+        ]
+
+    if module == "farming":
+        return [
+            {"label": "Healthy", "value": float(stats.get("healthyKm2") or 0)},
+            {"label": "Stressed", "value": float(stats.get("stressedKm2") or 0)},
+        ]
+
+    if module == "river-erosion":
+        return [
+            {"label": "Eroded", "value": float(stats.get("erodedAreaKm2") or 0)},
+            {"label": "Accreted", "value": float(stats.get("accretedAreaKm2") or 0)},
+        ]
+
+    if module == "sea-level":
+        return [
+            {"label": "New inundation", "value": float(stats.get("inundationAreaKm2") or 0)},
+        ]
 
     detected = stats.get("landslidePixels") or stats.get("floodPixels") or 0
     changed = stats.get("changePixels")
@@ -266,7 +296,7 @@ def _build_module_payload(module: str, meta: dict) -> dict:
 
     # --- Distribution ---
     distribution = (
-        _severity_bands(delta_hh, mask) if is_flood else _distribution_from_stats(stats)
+        _severity_bands(delta_hh, mask) if is_flood else _distribution_from_stats(module, stats)
     )
 
     # --- Zone count ---
