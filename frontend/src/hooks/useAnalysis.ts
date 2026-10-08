@@ -67,6 +67,27 @@ export interface UseAnalysisResult {
 }
 
 /**
+ * Shape guard for a job restored from localStorage.
+ *
+ * The stored payload is UNTRUSTED: it may have been written by an older build
+ * with a different field set. `DsardPanel` reads `job.steps.length`, so a job
+ * without `steps` throws and blanks the whole panel — a stale entry from a
+ * previous session must degrade to "no job", never to a crash.
+ */
+function isRestorableJob(value: unknown): value is AnalysisJob {
+  if (typeof value !== 'object' || value === null) return false;
+  const candidate = value as Partial<AnalysisJob>;
+  return (
+    typeof candidate.id === 'string' &&
+    candidate.id.length > 0 &&
+    Array.isArray(candidate.steps) &&
+    typeof candidate.detectionType === 'string' &&
+    typeof candidate.stage === 'string' &&
+    (STAGE_ORDER as string[]).includes(candidate.stage)
+  );
+}
+
+/**
  * Analysis orchestration.
  *
  * The polling cadence lives in one place so the D-SAR-D / Extracting /
@@ -74,21 +95,6 @@ export interface UseAnalysisResult {
  */
 export function useAnalysis(): UseAnalysisResult {
   const jobId = useAppStore((state) => state.jobId);
-// Restore jobId from localStorage on mount
-useEffect(() => {
-  if (typeof window !== 'undefined' && !jobId) {
-    const storedJobId = localStorage.getItem('activeJobId');
-    const storedJobData = localStorage.getItem('activeJobData');
-    if (storedJobId && storedJobData) {
-      try {
-        const jobData = JSON.parse(storedJobData);
-        startAnalysis(jobData);
-      } catch (e) {
-        console.warn('Could not restore job:', e);
-      }
-    }
-  }
-}, []); // eslint-disable-line react-hooks/exhaustive-deps
   const job = useAppStore((state) => state.job);
   const setJob = useAppStore((state) => state.setJob);
   const startAnalysis = useAppStore((state) => state.startAnalysis);
@@ -105,6 +111,35 @@ useEffect(() => {
   const progress = job?.progress ?? 0;
   const stage = job?.stage ?? 'dsard';
   const isComplete = progress >= 100 && job !== null;
+
+  /* ---- 0. restore an in-flight job across a reload ---- */
+  useEffect(() => {
+    if (typeof window === 'undefined' || jobId) return;
+
+    const storedJobId = localStorage.getItem('activeJobId');
+    const storedJobData = localStorage.getItem('activeJobData');
+    if (!storedJobId || !storedJobData) return;
+
+    const discard = () => {
+      localStorage.removeItem('activeJobId');
+      localStorage.removeItem('activeJobData');
+    };
+
+    try {
+      const parsed: unknown = JSON.parse(storedJobData);
+      if (isRestorableJob(parsed)) {
+        startAnalysis(parsed);
+      } else {
+        console.warn('[analysis] discarding stored job with an unexpected shape');
+        discard();
+      }
+    } catch (error) {
+      console.warn('[analysis] could not restore job:', error);
+      discard();
+    }
+    // Mount only: re-running on jobId changes would fight the live job.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   /* ---- 1. start ---- */
 const startMutation = useMutation({

@@ -48,9 +48,14 @@ export function DsardPanel({ className, onStart }: DsardPanelProps) {
     );
   }
 
+  // `steps` is optional in practice: a job restored from localStorage may
+  // predate the field. Fall back to the canonical pipeline rather than throwing
+  // on `job.steps.length`.
+  const jobSteps = Array.isArray(job.steps) ? job.steps : [];
+
   const steps: AnalysisStep[] =
-    job.steps.length > 0
-      ? job.steps
+    jobSteps.length > 0
+      ? jobSteps
       : DSARD_PIPELINE.map((step) => ({
           id: step.id,
           label: step.label,
