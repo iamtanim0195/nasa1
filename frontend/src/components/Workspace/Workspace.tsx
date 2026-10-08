@@ -39,6 +39,7 @@ export function Workspace({ className }: WorkspaceProps) {
   const [railCollapsed, setRailCollapsed] = useState(false);
   const [globeFailed, setGlobeFailed] = useState(false);
   const [showFloodOverlay, setShowFloodOverlay] = useState(false);
+  const [showModis, setShowModis] = useState(false);
 
   // `?result=<anything>` opens the overlay on load; previously only 'feni' did.
   useEffect(() => {
@@ -187,6 +188,7 @@ export function Workspace({ className }: WorkspaceProps) {
             onHoverEvent={hoverEvent}
             onError={() => setGlobeFailed(true)}
             floodMaskActive={showFloodOverlay}
+            modisActive={showModis}
           >
             <div className="absolute bottom-16 left-4 z-chrome flex flex-wrap items-center gap-2">
               <Button
@@ -204,6 +206,14 @@ export function Workspace({ className }: WorkspaceProps) {
                 onClick={() => setShowFloodOverlay((open) => !open)}
               >
                 {showFloodOverlay ? 'Hide result' : `Show ${detectionLabel} result`}
+              </Button>
+
+              <Button
+                variant={showModis ? 'accent' : 'subtle'}
+                size="sm"
+                onClick={() => setShowModis((on) => !on)}
+              >
+                {showModis ? 'MODIS on' : 'MODIS layer'}
               </Button>
             </div>
 

@@ -298,6 +298,90 @@ export function disableSplitComparison(cesium: CesiumNamespace, viewer: any): vo
 }
 
 /* -------------------------------------------------------------------------- */
+/* MODIS live imagery (NASA GIBS)                                              */
+/* -------------------------------------------------------------------------- */
+
+/** Layer name used to find and remove the MODIS layer again. */
+export const MODIS_LAYER_NAME = 'modis-live';
+
+/**
+ * The acquisition date the dashboard opens on — the project's "after" scene, so
+ * the MODIS true-colour backdrop lines up with the change detection.
+ */
+export const DEFAULT_MODIS_DATE = '2026-09-12';
+
+/** GIBS 250 m EPSG:4326 tile matrix levels are labelled '0'..'8'. */
+const MODIS_TILE_MATRIX_LABELS = ['0', '1', '2', '3', '4', '5', '6', '7', '8'];
+
+/**
+ * Adds NASA GIBS MODIS Terra corrected-reflectance true colour.
+ *
+ * Why this is a genuinely "live" layer: the tiles are fetched straight from
+ * NASA's Global Imagery Browse Services at request time, so the imagery is the
+ * real orbital product rather than anything packaged with the app. Verified
+ * against the live endpoint for the project's own dates — the 2026-09-12 tile
+ * returns HTTP 200 image/jpeg.
+ *
+ * The layer is added above the basemap and left semi-transparent so terrain and
+ * the change markers stay readable underneath.
+ *
+ * NOTE: Cesium is loaded from a CDN at runtime (see ./loader), so the namespace
+ * arrives as a parameter. `import * as cesium from 'cesium'` would fail —
+ * cesium is deliberately not an npm dependency.
+ */
+export function addModisLayer(
+  cesium: CesiumNamespace,
+  viewer: any,
+  date: string = DEFAULT_MODIS_DATE,
+  alpha = 0.6,
+): any {
+  // Idempotent: toggling on twice must not stack duplicate layers.
+  removeModisLayer(viewer);
+
+  const provider = new cesium.WebMapTileServiceImageryProvider({
+    url:
+      'https://gibs.earthdata.nasa.gov/wmts/epsg4326/best/' +
+      'MODIS_Terra_CorrectedReflectance_TrueColor/default/' +
+      `${date}/250m/{TileMatrix}/{TileRow}/{TileCol}.jpg`,
+    layer: 'MODIS_Terra_CorrectedReflectance_TrueColor',
+    style: 'default',
+    format: 'image/jpeg',
+    tileMatrixSetID: '250m',
+    tileMatrixLabels: MODIS_TILE_MATRIX_LABELS,
+    maximumLevel: 8,
+    credit: 'NASA EOSDIS GIBS',
+  });
+
+  const layer = new cesium.ImageryLayer(provider);
+  layer.alpha = alpha;
+  layer.name = MODIS_LAYER_NAME;
+
+  viewer.imageryLayers.add(layer);
+  return layer;
+}
+
+/** True when the MODIS layer is currently on the globe. */
+export function hasModisLayer(viewer: any): boolean {
+  const layers = viewer?.imageryLayers;
+  if (!layers) return false;
+  for (let i = 0; i < layers.length; i += 1) {
+    if (layers.get(i)?.name === MODIS_LAYER_NAME) return true;
+  }
+  return false;
+}
+
+/** Removes the MODIS layer if present. Safe to call when absent. */
+export function removeModisLayer(viewer: any): void {
+  const layers = viewer?.imageryLayers;
+  if (!layers) return;
+  for (let i = layers.length - 1; i >= 0; i -= 1) {
+    if (layers.get(i)?.name === MODIS_LAYER_NAME) {
+      layers.remove(layers.get(i), true);
+    }
+  }
+}
+
+/* -------------------------------------------------------------------------- */
 /* Camera                                                                      */
 /* -------------------------------------------------------------------------- */
 

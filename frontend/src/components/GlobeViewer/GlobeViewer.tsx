@@ -4,6 +4,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { AlertTriangle, RefreshCw } from 'lucide-react';
 import {
+  addModisLayer,
   applyBaseLayer,
   createAutoRotate,
   createDoubleClickZoom,
@@ -17,6 +18,7 @@ import {
   flyToLocation,
   flyToPoint,
   loadCesium,
+  removeModisLayer,
   renderEventEntities,
   upsertSelectionMarker,
   type CesiumNamespace,
@@ -37,6 +39,8 @@ export interface GlobeViewerProps {
   comparisonActive: boolean;
   /** Flood-overlay toggle state, driven by the Workspace toolbar. */
   floodMaskActive?: boolean;
+  /** NASA GIBS MODIS true-colour overlay (live tiles from EOSDIS GIBS). */
+  modisActive?: boolean;
   onSelectEvent?: (eventId: string | null) => void;
   onHoverEvent?: (eventId: string | null) => void;
   onReady?: () => void;
@@ -64,6 +68,7 @@ export function GlobeViewer({
   activeLayer,
   autoRotate,
   comparisonActive,
+  modisActive = false,
   onSelectEvent,
   onHoverEvent,
   onReady,
@@ -220,6 +225,17 @@ export function GlobeViewer({
       disableSplitComparison(cesiumRef.current, viewerRef.current);
     }
   }, [comparisonActive, status]);
+
+  // MODIS live imagery (NASA GIBS)
+  useEffect(() => {
+    if (status !== 'ready' || !cesiumRef.current || !viewerRef.current) return;
+
+    if (modisActive) {
+      addModisLayer(cesiumRef.current, viewerRef.current);
+    } else {
+      removeModisLayer(viewerRef.current);
+    }
+  }, [modisActive, status]);
 
   // Selected AOI marker
   useEffect(() => {
