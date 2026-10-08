@@ -25,9 +25,20 @@ except ImportError:  # pragma: no cover - environment guard
 # ============================================================
 # CONFIG
 # ============================================================
-NISAR_DATA_FOLDER = r"C:\Users\JM\NISAR_Project\nisar_data"
-OUTPUT_FOLDER = r"C:\Users\JM\NISAR_Project\output"
-STATIC_FOLDER = r"C:\Users\JM\NISAR_Project\backend\static"
+# Paths are derived from this file's location so the service runs on any OS and
+# under any deploy root. They were previously hardcoded as C:\Users\... which
+# would have created literal "C:\..." directories on a Linux host.
+# Each is overridable by environment variable for container deploys.
+PROJECT_ROOT = os.path.dirname(
+    os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+)
+NISAR_DATA_FOLDER = os.environ.get(
+    "NISAR_DATA_FOLDER", os.path.join(PROJECT_ROOT, "nisar_data")
+)
+OUTPUT_FOLDER = os.environ.get(
+    "NISAR_OUTPUT_FOLDER", os.path.join(PROJECT_ROOT, "output")
+)
+STATIC_FOLDER = os.path.join(PROJECT_ROOT, "backend", "static")
 BASE_PATH = "science/LSAR/GCOV/grids/frequencyA/"
 
 # AOI window size in pixels. A 3000x3000 window at 20 m posting is 60 km x 60 km,

@@ -17,7 +17,16 @@ import numpy as np
 
 logger = logging.getLogger("earth_metamorphosis.dem")
 
-DEM_DIR = r"C:\Users\JM\NISAR_Project\nisar_data\dem"
+DEM_DIR = os.environ.get(
+    "NISAR_DEM_FOLDER",
+    os.path.join(
+        os.path.dirname(
+            os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        ),
+        "nisar_data",
+        "dem",
+    ),
+)
 
 # SRTMGL1 is sampled at 1 arc-second.
 ARCSEC_DEG = 1.0 / 3600.0

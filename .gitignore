@@ -97,6 +97,11 @@ yarn-error.log*
 public/cesium
 .tools/.tmp
 
+# The generic `.python-version` above is meant for local virtualenv markers, but
+# the backend's deploy pin is a real artefact: Nixpacks reads it to choose the
+# interpreter, so it must be committed.
+!backend/.python-version
+
 # ===== Jupyter =====
 .ipynb_checkpoints/
 
