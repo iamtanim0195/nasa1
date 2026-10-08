@@ -19,6 +19,7 @@ JOBS = {}
 
 # Ordered D-SAR-D stages, used to map real pipeline progress onto the UI steps.
 STAGE_ORDER = ['dsard', 'extracting', 'analyzing', 'result']
+STEP_IDS = ['ingest', 'calibrate', 'coregister', 'threshold']
 
 
 class AnalysisLocation(BaseModel):
@@ -200,15 +201,80 @@ async def create_analysis(
     return envelope(JOBS[job_id], request_id=request_id)
 
 
+def pipeline_job_view(job_id: str):
+    """
+    Present a job owned by `nisar_processor.JOBS` in this router's UI shape.
+
+    `POST /api/analyze-nisar` (what the Control Panel uses) stores its job in
+    nisar_processor's own dict, but the /analyze page polls THIS router's
+    `GET /api/analyze/{jobId}`. Without a fall-through those are two disconnected
+    stores and the primary flow - pick AOI, search granules, analyze, view the
+    pipeline - dead-ends on "No D-SAR-D run in this session" (verified: HTTP 404).
+
+    Reading the live dict on each poll keeps progress accurate without a second
+    mirrored copy that could drift.
+    """
+    from api.services.nisar_processor import JOBS as PIPELINE_JOBS
+
+    real = PIPELINE_JOBS.get(job_id)
+    if not real:
+        return None
+
+    stage = real.get('stage') or 'dsard'
+    if stage not in STAGE_ORDER:
+        stage = 'dsard'
+
+    status = real.get('status') or 'running'
+    index = STAGE_ORDER.index(stage)
+    if status == 'complete':
+        steps = [{"id": s, "label": s.title(), "status": "done"} for s in STEP_IDS]
+    else:
+        steps = []
+        for idx, step_id in enumerate(STEP_IDS):
+            if idx < index:
+                state = 'done'
+            elif idx == index:
+                state = 'running'
+            else:
+                state = 'pending'
+            steps.append({"id": step_id, "label": step_id.title(), "status": state})
+
+    return {
+        "id": job_id,
+        "detectionType": real.get('detectionType', 'flood'),
+        "locationName": real.get('locationName', 'NISAR AOI'),
+        "location": real.get('location'),
+        "dateRange": real.get('dateRange'),
+        "stage": stage,
+        "progress": 100 if status == 'complete' else real.get('progress', 0),
+        "status": status,
+        "startedAt": real.get('startedAt'),
+        "etaSeconds": real.get('etaSeconds'),
+        "message": real.get('errorMessage') or f"Processing stage: {stage}",
+        "steps": steps,
+        "simulated": False,
+        "result": real.get('result'),
+        "errorMessage": real.get('errorMessage'),
+    }
+
+
+def find_job(job_id: str):
+    """This router's job, or a live view of a pipeline job, or None."""
+    if job_id in JOBS:
+        return JOBS[job_id]
+    return pipeline_job_view(job_id)
+
+
 @router.get("/analyze/{job_id}")
 async def get_analysis(request: Request, job_id: str):
-    """Get analysis job status."""
+    """Get analysis job status (from this router, or the NISAR pipeline)."""
     request_id = request.headers.get("x-request-id")
 
-    if job_id not in JOBS:
+    job = find_job(job_id)
+    if job is None:
         raise HTTPException(status_code=404, detail=f"Job {job_id} not found")
 
-    return envelope(JOBS[job_id], request_id=request_id)
+    return envelope(job, request_id=request_id)
 
 
 @router.get("/analyze/{job_id}/extractions")
@@ -221,7 +287,7 @@ async def get_extractions(request: Request, job_id: str):
     """
     request_id = request.headers.get("x-request-id")
 
-    if job_id not in JOBS:
+    if find_job(job_id) is None:
         raise HTTPException(status_code=404, detail=f"Job {job_id} not found")
 
     data = [
@@ -276,7 +342,7 @@ async def get_widgets(request: Request, job_id: str):
     """
     request_id = request.headers.get("x-request-id")
 
-    if job_id not in JOBS:
+    if find_job(job_id) is None:
         raise HTTPException(status_code=404, detail=f"Job {job_id} not found")
 
     data = [

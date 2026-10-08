@@ -479,6 +479,8 @@ export interface AnalyzeNisarRequest {
 export interface AnalyzeNisarResponse {
   jobId: string;
   status: string;
+  /** Echoed back by the backend so the UI can label the running job. */
+  detectionType?: string;
 }
 
 export interface NisarJobStatus {

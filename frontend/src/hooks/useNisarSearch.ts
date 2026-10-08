@@ -12,6 +12,38 @@ import {
   type AnalyzeNisarRequest,
   type NisarJobStatus,
 } from '@/services';
+import { useAppStore } from '@/store/appStore';
+import type { AnalysisJob, AnalysisStep, DetectionType } from '@/types';
+
+/**
+ * Build a job record the /analyze page can render.
+ *
+ * `POST /api/analyze-nisar` returns only `{ jobId, status, detectionType }`, but
+ * the store and the localStorage restore both expect a full AnalysisJob — and
+ * `isRestorableJob` rejects anything without a `steps` array. This seeds the
+ * four D-SAR-D steps so the redirect target renders immediately; live progress
+ * then comes from the polled job status.
+ */
+function buildNisarJob(jobId: string, detectionType?: string): AnalysisJob {
+  const steps: AnalysisStep[] = [
+    { id: 'ingest', label: 'Ingest', status: 'running' },
+    { id: 'calibrate', label: 'Calibrate', status: 'pending' },
+    { id: 'coregister', label: 'Coregister', status: 'pending' },
+    { id: 'threshold', label: 'Threshold', status: 'pending' },
+  ];
+
+  return {
+    id: jobId,
+    detectionType: (detectionType ?? 'flood') as DetectionType,
+    locationName: 'NISAR granule AOI',
+    stage: 'dsard',
+    progress: 0,
+    startedAt: new Date().toISOString(),
+    etaSeconds: 30,
+    message: 'Dispatching to the NISAR pipeline',
+    steps,
+  };
+}
 import { toast } from '@/store/toastStore';
 
 export interface UseNisarSearchResult {
@@ -34,6 +66,7 @@ export interface UseNisarSearchResult {
 export function useNisarSearch(): UseNisarSearchResult {
   const [files, setFiles] = useState<NisarFile[]>([]);
   const [jobId, setJobId] = useState<string | null>(null);
+  const startAnalysis = useAppStore((state) => state.startAnalysis);
 
   const searchMutation = useMutation({
     mutationFn: (params: SearchNisarRequest) => searchNisarFiles(params),
@@ -53,8 +86,23 @@ export function useNisarSearch(): UseNisarSearchResult {
   const analyzeMutation = useMutation({
     mutationFn: (params: AnalyzeNisarRequest) => analyzeNisar(params),
     onSuccess: (envelope) => {
-      setJobId(envelope.data.jobId);
-      toast.info('Analysis started', `Job ${envelope.data.jobId} is running.`);
+      const jobId = envelope.data.jobId;
+      setJobId(jobId);
+
+      // Publish the job to the app store and localStorage BEFORE the Control
+      // Panel navigates to /analyze. That page reads its job from the store, and
+      // this hook's local state does not survive the route change - so without
+      // this the redirect lands on "No D-SAR-D run in this session" even though
+      // the analysis is running. The backend serves this id from the pipeline
+      // store via the fall-through in GET /api/analyze/{jobId}.
+      const job = buildNisarJob(jobId, envelope.data.detectionType);
+      startAnalysis(job);
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('activeJobId', jobId);
+        localStorage.setItem('activeJobData', JSON.stringify(job));
+      }
+
+      toast.info('Analysis started', `Job ${jobId} is running.`);
     },
     onError: (error) => {
       const apiError = ApiError.from(error);
