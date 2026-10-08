@@ -39,6 +39,7 @@ OUTPUT_FOLDER = os.path.join(PROJECT_ROOT, "output")
 # Detection type -> (artifact subfolder, metadata filename)
 MODULE_ARTIFACTS = {
     "flood": ("feni", "feni_metadata.json"),
+    "landslide": ("landslide", "landslide_metadata.json"),
 }
 
 # Cache: module -> {"stamp": (mtime, size), "payload": dict}
@@ -154,35 +155,82 @@ def _agreement_histogram(mask, delta_hh, delta_hv, tile=300):
     ]
 
 
-def _build_flood_payload(module: str, meta: dict) -> dict:
-    """Derive the full ResultDataset payload from real artifacts."""
+def _distribution_from_stats(stats):
+    """
+    Bar-chart series for modules that do not persist npy arrays.
+
+    Prefers a module-supplied `slopeBands` (landslide area by steepness) and
+    falls back to a plain detected/unchanged split.
+    """
+    bands = stats.get("slopeBands")
+    if bands:
+        return [{"label": b["label"], "value": float(b["value"])} for b in bands]
+
+    detected = stats.get("landslidePixels") or stats.get("floodPixels") or 0
+    changed = stats.get("changePixels")
+    if detected and changed:
+        return [
+            {"label": "Detected", "value": float(detected)},
+            {"label": "Change, stable terrain", "value": float(max(changed - detected, 0))},
+        ]
+    if detected:
+        return [{"label": "Detected", "value": float(detected)}]
+    return []
+
+
+def _build_module_payload(module: str, meta: dict) -> dict:
+    """
+    Derive the full ResultDataset payload from real artifacts.
+
+    Two metadata layouts are supported:
+      * `flood_stats` + `geocoords` — written by the offline feni_extract.py
+      * `stats`                     — written by the API module handlers
+    The npy-based enrichment only runs for flood, which is the module that
+    persists mask/delta arrays.
+    """
     folder = _module_dir(module)
+    is_flood = module == "flood"
 
-    mask = _load_npy(os.path.join(folder, "feni_flood_mask.npy"))
-    delta_hh = _load_npy(os.path.join(folder, "feni_delta_hh.npy"))
-    delta_hv = _load_npy(os.path.join(folder, "feni_delta_hv.npy"))
-    x_coords = _load_npy(os.path.join(folder, "feni_x_coords.npy"))
-    y_coords = _load_npy(os.path.join(folder, "feni_y_coords.npy"))
+    mask = delta_hh = delta_hv = None
+    x_coords = y_coords = None
+    if is_flood:
+        mask = _load_npy(os.path.join(folder, "feni_flood_mask.npy"))
+        delta_hh = _load_npy(os.path.join(folder, "feni_delta_hh.npy"))
+        delta_hv = _load_npy(os.path.join(folder, "feni_delta_hv.npy"))
+        x_coords = _load_npy(os.path.join(folder, "feni_x_coords.npy"))
+        y_coords = _load_npy(os.path.join(folder, "feni_y_coords.npy"))
 
-    # The mask is persisted as uint8. Cast to bool so it can be used for boolean
-    # indexing — `array[uint8_mask]` would otherwise be read as integer fancy
-    # indexing and try to materialise a (H, W, H, W...) array.
-    if mask is not None:
-        mask = mask.astype(bool)
+        # The mask is persisted as uint8. Cast to bool so it can be used for
+        # boolean indexing — `array[uint8_mask]` would otherwise be read as
+        # integer fancy indexing and try to materialise a (H, W, H, W...) array.
+        if mask is not None:
+            mask = mask.astype(bool)
 
-    stats = meta.get("flood_stats", {}) or {}
-    geocoords = meta.get("geocoords", {}) or {}
+    stats = meta.get("stats") or meta.get("flood_stats") or {}
+    geocoords = meta.get("geocoords") or {}
 
-    flood_pixels = int(stats.get("flood_pixels", 0) or 0)
-    total_valid = int(stats.get("total_valid_pixels", 0) or 0)
+    px_km2 = stats.get("pixelAreaKm2")
+    if not px_km2:
+        px_km2 = _pixel_area_km2(getattr(mask, "shape", (0, 0)), x_coords, y_coords)
 
-    px_km2 = _pixel_area_km2(getattr(mask, "shape", (0, 0)), x_coords, y_coords)
-    flood_area_km2 = round(flood_pixels * px_km2, 2)
+    pixel_count = int(
+        stats.get("floodPixels")
+        or stats.get("landslidePixels")
+        or stats.get("flood_pixels")
+        or 0
+    )
+    total_valid = int(stats.get("totalPixels") or stats.get("total_valid_pixels") or 0)
+
+    affected_area_km2 = stats.get("affectedAreaKm2")
+    if affected_area_km2 is None:
+        affected_area_km2 = round(pixel_count * px_km2, 2)
+    affected_area_km2 = round(float(affected_area_km2), 2)
+
     total_area_km2 = round(total_valid * px_km2, 2)
 
-    # --- Category split: which polarisation saw the change (measured) ---
+    # --- Category split ---
     categories = []
-    if mask is not None and delta_hh is not None and delta_hv is not None:
+    if is_flood and mask is not None and delta_hh is not None and delta_hv is not None:
         fh = delta_hh < -3.0
         fv = delta_hv < -3.0
         pairs = [
@@ -195,16 +243,18 @@ def _build_flood_payload(module: str, meta: dict) -> dict:
             for label, m in pairs
         ]
     if not categories:
-        unaffected = max(total_area_km2 - flood_area_km2, 0.0)
+        unaffected = max(total_area_km2 - affected_area_km2, 0.0)
         categories = [
-            {"label": "Flooded", "value": flood_area_km2},
-            {"label": "Unaffected", "value": round(unaffected, 2)},
+            {"label": module.title(), "value": affected_area_km2},
+            {"label": "Unchanged", "value": round(unaffected, 2)},
         ]
 
-    # --- Confidence bands from tile-wise polarisation agreement ---
-    confidence_bands = _agreement_histogram(mask, delta_hh, delta_hv)
+    # --- Confidence bands (flood only: tile-wise dual-pol agreement) ---
+    confidence_bands = (
+        _agreement_histogram(mask, delta_hh, delta_hv) if is_flood else []
+    )
 
-    mean_confidence = 0.0
+    mean_confidence = stats.get("meanConfidence") or 0.0
     if confidence_bands:
         total_tiles = sum(b["value"] for b in confidence_bands) or 1
         midpoints = {_band_label(lo, hi): (lo + min(hi, 1.0)) / 2 for lo, hi in AGREEMENT_BANDS}
@@ -214,12 +264,14 @@ def _build_flood_payload(module: str, meta: dict) -> dict:
             3,
         )
 
-    # --- Distribution: severity of the HH drop (measured) ---
-    distribution = _severity_bands(delta_hh, mask)
+    # --- Distribution ---
+    distribution = (
+        _severity_bands(delta_hh, mask) if is_flood else _distribution_from_stats(stats)
+    )
 
-    # --- Flood-zone count: tiles with meaningful inundation (measured) ---
-    event_count = 0
-    if mask is not None and mask.size:
+    # --- Zone count ---
+    event_count = int(stats.get("features") or 0)
+    if not event_count and mask is not None and mask.size:
         h, w = mask.shape
         tile = 300
         th, tw = h // tile, w // tile
@@ -227,15 +279,14 @@ def _build_flood_payload(module: str, meta: dict) -> dict:
             counts = mask[: th * tile, : tw * tile].reshape(th, tile, tw, tile).sum(axis=(1, 3))
             event_count = int(np.count_nonzero(counts > (0.02 * tile * tile)))
 
-    before_date = meta.get("before_date")
-    after_date = meta.get("after_date")
+    before_date = meta.get("before_date") or meta.get("beforeDate")
+    after_date = meta.get("after_date") or meta.get("afterDate")
 
-    # Only two acquisitions exist, so the timeline is honestly two points:
-    # no newly-inundated area at the before date, the measured area at the after.
-    timeline = [
-        {"label": f"{before_date} (before)", "value": 0.0},
-        {"label": f"{after_date} (after)", "value": flood_area_km2},
-    ]
+    sub = os.path.basename(folder)
+    geotiff = (f"/artifacts/{sub}/feni_flood_mask.tif" if is_flood
+               else f"/artifacts/{sub}/{module}_mask.tif")
+    preview = (f"/artifacts/{sub}/feni_flood_detection.png" if is_flood
+               else f"/artifacts/{sub}/{module}_preview.png")
 
     return {
         "generatedAt": meta.get("processed_at") or time.strftime("%Y-%m-%dT%H:%M:%S"),
@@ -244,12 +295,17 @@ def _build_flood_payload(module: str, meta: dict) -> dict:
         "meanConfidence": mean_confidence,
         "categories": categories,
         "distribution": distribution,
-        "timeline": timeline,
+        # Only two acquisitions exist locally, so the timeline is honestly two
+        # points: nothing at the before date, the measured area at the after.
+        "timeline": [
+            {"label": f"{before_date} (before)", "value": 0.0},
+            {"label": f"{after_date} (after)", "value": affected_area_km2},
+        ],
         "confidenceBands": confidence_bands,
         "jobId": None,  # filled in by the caller
         "detectionType": module,
-        "geotiffUrl": f"/artifacts/{os.path.basename(folder)}/feni_flood_mask.tif",
-        "previewUrl": f"/artifacts/{os.path.basename(folder)}/feni_flood_detection.png",
+        "geotiffUrl": geotiff,
+        "previewUrl": preview,
         "metadata": {
             "beforeDate": before_date,
             "afterDate": after_date,
@@ -258,17 +314,19 @@ def _build_flood_payload(module: str, meta: dict) -> dict:
             "satellite": "NISAR",
             "instrument": "L-band SAR",
             "orbit": meta.get("orbit"),
-            "projectionEpsg": meta.get("projection_epsg"),
-            "coveragePct": stats.get("coverage_pct"),
+            "projectionEpsg": meta.get("projection_epsg") or meta.get("projectionEpsg"),
+            "coveragePct": stats.get("coveragePct") or stats.get("coverage_pct"),
             "severity": stats.get("severity"),
+            "method": meta.get("method"),
+            "slope": meta.get("slope"),
             "geocoords": geocoords,
             "pixelAreaKm2": px_km2,
             "confidenceMetric": (
                 "Share of each 300x300-pixel tile's changed area that HH and HV "
                 "independently agree on. Lower values mean the two polarisations "
                 "disagree, not that the detection is unreliable."
-            ),
-            "zoneDefinition": "300x300-pixel tiles with >2% inundation",
+            ) if is_flood else None,
+            "zoneDefinition": "300x300-pixel tiles with >2% change",
         },
     }
 
@@ -293,7 +351,7 @@ def _get_cached_payload(module: str):
         return None
 
     try:
-        payload = _build_flood_payload(module, meta)
+        payload = _build_module_payload(module, meta)
     except Exception as exc:
         logger.exception("Failed to derive payload for %s: %s", module, exc)
         return None

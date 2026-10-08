@@ -41,6 +41,10 @@ PRESET_LOCATIONS = [
      "lat": 24.85, "lng": 92.0, "bbox": [91.5, 24.5, 92.5, 25.2], "altitude": 80000, "source": "preset"},
     {"id": "preset-rangamati", "name": "Rangamati", "country": "Bangladesh", "region": "Chittagong Hill Tracts",
      "lat": 22.75, "lng": 92.25, "bbox": [92.0, 22.5, 92.5, 23.0], "altitude": 60000, "source": "preset"},
+    # Panchhari sits in the same hill tracts but ~4.5x better covered by the
+    # NISAR swath (86.8% vs 19.5% valid), so it is the better landslide demo AOI.
+    {"id": "preset-panchhari", "name": "Panchhari", "country": "Bangladesh", "region": "Khagrachari",
+     "lat": 23.28, "lng": 91.90, "bbox": [91.7, 23.1, 92.1, 23.5], "altitude": 60000, "source": "preset"},
     {"id": "preset-rajshahi", "name": "Rajshahi", "country": "Bangladesh", "region": "Rajshahi",
      "lat": 24.4, "lng": 88.6, "bbox": [88.4, 24.2, 88.8, 24.6], "altitude": 50000, "source": "preset"},
     {"id": "preset-padma", "name": "Padma River", "country": "Bangladesh", "region": "Rajbari",

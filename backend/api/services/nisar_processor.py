@@ -35,6 +35,14 @@ BASE_PATH = "science/LSAR/GCOV/grids/frequencyA/"
 # (Reading the full 17028x17316 scene needs ~4.4 GB and previously hung the job.)
 CROP_SIZE_DEFAULT = 3000
 FLOOD_THRESHOLD_DB = -3.0
+# Landslide: steep enough to fail, and a drop in both polarisations.
+SLOPE_MIN_DEG = 15.0
+CHANGE_THRESHOLD_DB = -3.0
+# Despeckle: keep pixels that have at least this many set 8-neighbours, which
+# drops lone pixels while preserving genuine small clusters. SAR change masks
+# are sparse, so 2+ would discard most real signal (measured on Rangamati:
+# 1290 candidates -> 198 at 1, 31 at 2, and 0 under a full 3x3 opening).
+DESPECKLE_MIN_NEIGHBOURS = 1
 
 # Guard rails so a job can never sit at `running` forever.
 EXTRACT_TIMEOUT_S = 240
@@ -225,6 +233,296 @@ def _extract_pair(job_id, wkt, before_file_id, after_file_id):
     return before_data, after_data
 
 
+def _neighbour_count(mask):
+    """Number of set 8-neighbours for every pixel."""
+    height, width = mask.shape
+    padded = np.zeros((height + 2, width + 2), dtype=np.uint8)
+    padded[1:-1, 1:-1] = mask
+    count = np.zeros((height, width), dtype=np.uint8)
+    for dy in (0, 1, 2):
+        for dx in (0, 1, 2):
+            if dy == 1 and dx == 1:
+                continue
+            count += padded[dy:dy + height, dx:dx + width]
+    return count
+
+
+def despeckle(mask, min_neighbours=2):
+    """
+    Remove isolated speckle: keep only pixels with >= min_neighbours set.
+
+    Preferred over `binary_opening_3x3` for SAR change masks. Opening erodes
+    with a FULL 3x3 kernel, so any pixel lacking all eight neighbours dies and
+    cannot be restored by the following dilation — on a sparse change mask that
+    erases the detection entirely. A neighbour-count filter removes lone pixels
+    while preserving genuine small clusters.
+    """
+    return mask & (_neighbour_count(mask) >= min_neighbours)
+
+
+def binary_opening_3x3(mask):
+    """
+    Binary morphological opening with a 3x3 kernel (erode then dilate).
+
+    Pure numpy: scipy is unavailable on this Python, and opening is only ever
+    needed at 3x3 here. Suitable for DENSE masks; see `despeckle` for the sparse
+    case, which is what SAR change masks are.
+    """
+    def _shift_and(arr, dy, dx, fill):
+        out = np.full_like(arr, fill)
+        h, w = arr.shape
+        ys_src = slice(max(0, -dy), h - max(0, dy))
+        ys_dst = slice(max(0, dy), h - max(0, -dy))
+        xs_src = slice(max(0, -dx), w - max(0, dx))
+        xs_dst = slice(max(0, dx), w - max(0, -dx))
+        out[ys_dst, xs_dst] = arr[ys_src, xs_src]
+        return out
+
+    def _neighbourhood_reduce(arr, reducer, fill):
+        result = arr.copy()
+        for dy in (-1, 0, 1):
+            for dx in (-1, 0, 1):
+                if dy == 0 and dx == 0:
+                    continue
+                result = reducer(result, _shift_and(arr, dy, dx, fill))
+        return result
+
+    eroded = _neighbourhood_reduce(mask, np.logical_and, False)
+    dilated = _neighbourhood_reduce(eroded, np.logical_or, False)
+    return dilated
+
+
+def _write_module_artifacts(module, before_data, after_data, mask, metadata):
+    """
+    Persist a module's mask as GeoTIFF + PNG and write its metadata JSON so
+    `GET /api/results/{job}?detectionType=<module>` can serve it straight away.
+
+    Returns (geotiff_url, preview_url, folder).
+    """
+    import json
+
+    folder = os.path.join(OUTPUT_FOLDER, module)
+    os.makedirs(folder, exist_ok=True)
+
+    geotiff_url = None
+    preview_url = None
+
+    try:
+        from core.geotiff_exporter import export_geotiff
+        target = os.path.join(folder, f"{module}_mask.tif")
+        written = export_geotiff(
+            mask.astype("uint8"), target,
+            before_data["x_coords"], before_data["y_coords"],
+            before_data.get("projection", 32646), dtype="uint8",
+        )
+        if written:
+            geotiff_url = f"/artifacts/{module}/{module}_mask.tif"
+    except Exception as exc:
+        logger.warning("GeoTIFF export failed for %s: %s", module, exc)
+
+    try:
+        import matplotlib
+        matplotlib.use("Agg")
+        import matplotlib.pyplot as plt
+
+        background = after_data["hhhh_db"]
+        display_mask = mask
+
+        # The window is a bounding box but the swath is a rotated parallelogram,
+        # so edge AOIs are mostly no-data. Crop the figure to the valid region so
+        # the preview shows terrain instead of a wall of white.
+        finite = np.isfinite(background)
+        if finite.any():
+            rows = np.where(finite.any(axis=1))[0]
+            cols = np.where(finite.any(axis=0))[0]
+            r0, r1 = int(rows[0]), int(rows[-1]) + 1
+            c0, c1 = int(cols[0]), int(cols[-1]) + 1
+            background = background[r0:r1, c0:c1]
+            display_mask = mask[r0:r1, c0:c1]
+
+        png_path = os.path.join(folder, f"{module}_preview.png")
+        valid_pct = 100.0 * float(finite.mean()) if finite.size else 0.0
+        finite_bg = background[np.isfinite(background)]
+        if finite_bg.size:
+            vmin, vmax = np.percentile(finite_bg, 2), np.percentile(finite_bg, 98)
+        else:
+            vmin, vmax = None, None
+
+        # Detections are typically a fraction of a percent of the frame and are
+        # spatially scattered, so their bounding box is not a useful zoom. A
+        # dedicated high-contrast mask panel is the standard presentation.
+        has_mask = bool(display_mask.any())
+        if has_mask:
+            fig, axes = plt.subplots(1, 2, figsize=(14, 7))
+            ax_full, ax_mask = axes
+        else:
+            fig, ax_full = plt.subplots(figsize=(7, 7))
+            axes = [ax_full]
+            ax_mask = None
+
+        ax_full.imshow(background, cmap="gray", vmin=vmin, vmax=vmax)
+        if has_mask:
+            visual = display_mask.copy()
+            for _ in range(3):
+                visual = visual | np.roll(visual, 1, 0) | np.roll(visual, 1, 1)
+            ax_full.imshow(np.ma.masked_where(~visual, visual), cmap="autumn", alpha=0.9)
+        ax_full.set_title(f"backscatter + detections (valid data {valid_pct:.0f}%)",
+                          fontsize=10, fontweight="bold")
+        ax_full.axis("off")
+
+        if ax_mask is not None:
+            ax_mask.imshow(display_mask, cmap="inferno", interpolation="nearest")
+            ax_mask.set_title(f"detection mask — {int(display_mask.sum()):,} px",
+                              fontsize=10, fontweight="bold")
+            ax_mask.axis("off")
+
+        fig.suptitle(
+            f"{module.title()} — {metadata.get('beforeDate')} to {metadata.get('afterDate')}",
+            fontsize=11, fontweight="bold",
+        )
+        fig.tight_layout()
+        fig.savefig(png_path, dpi=110, bbox_inches="tight")
+        plt.close(fig)
+        preview_url = f"/artifacts/{module}/{module}_preview.png"
+    except Exception as exc:
+        logger.warning("Preview render failed for %s: %s", module, exc)
+
+    try:
+        meta_path = os.path.join(folder, f"{module}_metadata.json")
+        with open(meta_path, "w", encoding="utf-8") as fh:
+            json.dump(metadata, fh, indent=2, ensure_ascii=False)
+    except Exception as exc:
+        logger.warning("Metadata write failed for %s: %s", module, exc)
+
+    return geotiff_url, preview_url, folder
+
+
+def run_landslide_analysis(job_id, wkt, before_file_id, after_file_id):
+    """
+    Landslide handler: terrain-constrained backscatter change.
+
+    A pixel is a landslide candidate when the ground is steep enough to fail
+    (slope > SLOPE_MIN_DEG, from real SRTM) AND both polarisations dropped by
+    more than the change threshold. The slope constraint is what separates a
+    landslide from ordinary flooding, which happens on flat ground.
+    """
+    from api.services import dem
+    from api.services.ai_predictor import predict_risk
+
+    before_data, after_data = _extract_pair(job_id, wkt, before_file_id, after_file_id)
+
+    update_job(job_id, stage="analyzing", progress=72)
+
+    slope, slope_meta = dem.slope_on_sar_grid(after_data)
+
+    delta_hh = after_data["hhhh_db"] - before_data["hhhh_db"]
+    delta_hv = after_data["hvhv_db"] - before_data["hvhv_db"]
+    valid = ~np.isnan(delta_hh) & ~np.isnan(delta_hv)
+
+    change_mask = (delta_hh < CHANGE_THRESHOLD_DB) & (delta_hv < CHANGE_THRESHOLD_DB) & valid
+
+    if slope is None:
+        # No DEM: fall back to change-only detection, clearly labelled.
+        landslide_mask = despeckle(change_mask, DESPECKLE_MIN_NEIGHBOURS)
+        terrain_constrained = False
+        change_on_slope = None
+    else:
+        slope_mask = np.isfinite(slope) & (slope > SLOPE_MIN_DEG)
+        change_on_slope = change_mask & slope_mask
+        landslide_mask = despeckle(change_on_slope, DESPECKLE_MIN_NEIGHBOURS)
+        terrain_constrained = True
+
+    update_job(job_id, progress=85)
+
+    px_km2 = _pixel_area_km2(after_data["x_coords"], after_data["y_coords"])
+    total_pixels = int(valid.sum())
+    landslide_pixels = int(landslide_mask.sum())
+
+    frac = (float(np.nanmean(slope[landslide_mask]))
+            if slope is not None and landslide_pixels else None)
+
+    # Landslide area split by how steep the terrain is — a genuinely useful
+    # distribution and the series the frontend bar chart renders.
+    slope_bands = []
+    if slope is not None:
+        slope_bands = [
+            {"label": "15-25 deg", "value": int((landslide_mask & (slope >= 15) & (slope < 25)).sum())},
+            {"label": "25-35 deg", "value": int((landslide_mask & (slope >= 25) & (slope < 35)).sum())},
+            {"label": ">35 deg", "value": int((landslide_mask & (slope >= 35)).sum())},
+        ]
+
+    stats = {
+        "coveragePct": round(100.0 * landslide_pixels / total_pixels, 3) if total_pixels else 0.0,
+        "affectedAreaKm2": round(landslide_pixels * px_km2, 3),
+        "landslidePixels": landslide_pixels,
+        "totalPixels": total_pixels,
+        "highRiskPixels": int((change_mask & (slope > 25.0)).sum())
+        if slope is not None else None,
+        "changePixels": int(change_mask.sum()),
+        # Pre-despeckle intersection, so the filtering step is auditable.
+        "changeOnSlopePixels": int(change_on_slope.sum()) if change_on_slope is not None else None,
+        "despeckleMinNeighbours": DESPECKLE_MIN_NEIGHBOURS,
+        # The sampled window is a bounding box; the radar swath is a rotated
+        # parallelogram inside it, so edge AOIs can be largely no-data. Surfaced
+        # so a thin detection is not mistaken for a failed one.
+        "aoiValidPct": round(100.0 * total_pixels / max(int(landslide_mask.size), 1), 2),
+        "meanSlopeInMaskDeg": round(frac, 2) if frac is not None else None,
+        "slopeThresholdDeg": SLOPE_MIN_DEG,
+        "changeThresholdDb": CHANGE_THRESHOLD_DB,
+        "terrainConstrained": terrain_constrained,
+        "pixelAreaKm2": px_km2,
+        "meanConfidence": round(
+            0.5 + 0.5 * min(1.0, (frac or 0.0) / max(SLOPE_MIN_DEG * 2, 1e-6)), 3
+        ) if frac is not None else 0.5,
+        "slopeBands": slope_bands,
+    }
+
+    metadata = {
+        "beforeDate": before_data["date"],
+        "afterDate": after_data["date"],
+        "track": f"{before_data['track']:03d}",
+        "frame": f"{before_data['frame']:03d}",
+        "satellite": "NISAR",
+        "instrument": "L-band SAR",
+        "projectionEpsg": after_data.get("projection"),
+        "aoiWindow": after_data.get("window"),
+        "slope": slope_meta,
+        # `stats` is what /api/results reads for non-flood modules.
+        "stats": stats,
+        "method": (
+            "slope > {:.0f} deg AND dHH < {} dB AND dHV < {} dB, 3x3 binary opening"
+            .format(SLOPE_MIN_DEG, CHANGE_THRESHOLD_DB, CHANGE_THRESHOLD_DB)
+        ),
+        "processed_at": datetime.utcnow().isoformat(),
+    }
+
+    geotiff_url, preview_url, _ = _write_module_artifacts(
+        "landslide", before_data, after_data, landslide_mask, metadata
+    )
+
+    update_job(job_id, progress=92)
+
+    prediction = predict_risk("landslide", [stats["affectedAreaKm2"]])
+
+    result = {
+        "jobId": job_id,
+        "detectionType": "landslide",
+        "stats": stats,
+        "before": {"date": before_data["date"], "track": before_data["track"],
+                   "frame": before_data["frame"]},
+        "after": {"date": after_data["date"], "track": after_data["track"],
+                  "frame": after_data["frame"]},
+        "geotiffUrl": geotiff_url,
+        "previewUrl": preview_url,
+        "metadata": metadata,
+        "prediction": prediction,
+    }
+
+    update_job(job_id, stage="result", progress=100, status="complete")
+    JOBS[job_id]["result"] = result
+    return result
+
+
 def run_flood_analysis(job_id, wkt, before_file_id, after_file_id):
     """Flood handler: backscatter drop across the AOI, HH and HV combined."""
     before_data, after_data = _extract_pair(job_id, wkt, before_file_id, after_file_id)
@@ -252,8 +550,8 @@ def _not_implemented(module_label):
 # means an unknown detection type fails loudly instead of silently running flood.
 DISPATCHERS = {
     "flood": run_flood_analysis,
+    "landslide": run_landslide_analysis,
     "earthquake": _not_implemented("earthquake"),
-    "landslide": _not_implemented("landslide"),
     "farming": _not_implemented("farming"),
     "river-erosion": _not_implemented("river-erosion"),
     "sea-level": _not_implemented("sea-level"),
@@ -433,6 +731,8 @@ def detect_flood(before_data, after_data, job_id):
     px_km2 = _pixel_area_km2(before_data["x_coords"], before_data["y_coords"])
     affected_area_km2 = round(flood_pixels * px_km2, 2)
 
+    from api.services.ai_predictor import predict_risk
+
     return {
         "jobId": job_id,
         "detectionType": "flood",
@@ -472,6 +772,9 @@ def detect_flood(before_data, after_data, job_id):
             "projectionEpsg": before_data.get("projection"),
             "aoiCenterPixel": before_data.get("aoi_center_pixel"),
         },
+        # Only two acquisitions exist in the local cache, so the predictor
+        # reports "insufficient history" rather than inventing a trend.
+        "prediction": predict_risk("flood", [affected_area_km2]),
     }
 
 
