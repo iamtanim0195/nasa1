@@ -96,6 +96,9 @@ useEffect(() => {
   const setExtractions = useAppStore((state) => state.setExtractions);
   const setWidgets = useAppStore((state) => state.setWidgets);
   const setResultDataset = useAppStore((state) => state.setResultDataset);
+  // Results are per-module: the endpoint keys off detectionType, so it must be
+  // part of the request and the query key or every module would show flood.
+  const detectionType = useAppStore((state) => state.detectionType);
 
   const queryClient = useQueryClient();
 
@@ -153,8 +156,8 @@ const startMutation = useMutation({
   });
 
   const resultsQuery = useQuery({
-    queryKey: ['analysis', 'results', jobId],
-    queryFn: () => fetchResults(jobId ?? ''),
+    queryKey: ['analysis', 'results', jobId, detectionType],
+    queryFn: () => fetchResults(jobId ?? '', detectionType),
     enabled: Boolean(jobId) && stageRank(stage) >= stageRank('result'),
     staleTime: Number.POSITIVE_INFINITY,
   });

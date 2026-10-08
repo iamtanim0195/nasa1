@@ -662,7 +662,12 @@ def run_river_erosion_analysis(job_id, wkt, before_file_id, after_file_id):
         "beforeWaterKm2": round(int(before_water.sum()) * px_km2, 3),
         "afterWaterKm2": round(int(after_water.sum()) * px_km2, 3),
         "pixelAreaKm2": px_km2,
-        "meanConfidence": round(min(1.0, 0.5 + max_shift_m / 200.0), 3),
+        # Data-quality confidence: how much of the sampled window had usable
+        # observations. Bounded 0.5..1.0 and meaningful, unlike the earlier
+        # 0.5 + shift/threshold form which saturated at 1.0 for any large shift.
+        "meanConfidence": round(
+            0.5 + 0.5 * (total / max(int(before_water.size), 1)), 3
+        ),
     }
 
     metadata = {
@@ -752,7 +757,11 @@ def run_sea_level_analysis(job_id, wkt, before_file_id, after_file_id):
         "coastalLatMax": COASTAL_LAT_MAX,
         "waterThresholdDb": WATER_THRESHOLD_DB,
         "pixelAreaKm2": px_km2,
-        "meanConfidence": round(min(1.0, 0.5 + max_shift_m / 300.0), 3),
+        # Data-quality confidence (usable fraction of the window), bounded and
+        # not saturating on large waterline shifts.
+        "meanConfidence": round(
+            0.5 + 0.5 * (total / max(int(before_water.size), 1)), 3
+        ),
     }
 
     metadata = {

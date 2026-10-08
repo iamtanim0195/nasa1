@@ -11,7 +11,9 @@ export const ENDPOINTS = {
   analyzeJob: (jobId: string) => `/api/analyze/${encodeURIComponent(jobId)}`,
   extractions: (jobId: string) => `/api/analyze/${encodeURIComponent(jobId)}/extractions`,
   widgets: (jobId: string) => `/api/analyze/${encodeURIComponent(jobId)}/widgets`,
-  results: (jobId: string) => `/api/results/${encodeURIComponent(jobId)}`,
+  results: (jobId: string, detectionType?: string) =>
+    `/api/results/${encodeURIComponent(jobId)}` +
+    (detectionType ? `?detectionType=${encodeURIComponent(detectionType)}` : ''),
   missionSummary: '/api/mission/summary',
 
   // ============================================================

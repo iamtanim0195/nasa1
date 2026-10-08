@@ -21,6 +21,21 @@ export const API_TIMEOUT = Number(process.env.NEXT_PUBLIC_API_TIMEOUT ?? 20_000)
  */
 export const USE_MOCK_API = process.env.NEXT_PUBLIC_USE_MOCK_API !== 'false';
 
+/**
+ * Resolve a backend-relative path (e.g. `/artifacts/feni/feni_preview.png`)
+ * against the API origin.
+ *
+ * The results endpoint returns pipeline artifact paths relative to the BACKEND,
+ * so using them directly as an `<img src>` would resolve them against the
+ * frontend origin and 404. Absolute URLs pass through untouched.
+ */
+export function resolveApiUrl(path?: string | null): string | undefined {
+  if (!path) return undefined;
+  if (/^https?:\/\//i.test(path)) return path;
+  const base = API_BASE_URL.replace(/\/+$/, '');
+  return `${base}${path.startsWith('/') ? '' : '/'}${path}`;
+}
+
 /* -------------------------------------------------------------------------- */
 /* Normalised error                                                            */
 /* -------------------------------------------------------------------------- */

@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
+import { useQuery } from '@tanstack/react-query';
 import { ArrowLeftRight, PanelLeftClose, PanelLeftOpen, X } from 'lucide-react';
 import { AOI_PRESETS, DETECTION_TYPES } from '@/lib/constants';
 import { cn } from '@/lib/utils';
@@ -10,6 +11,7 @@ import { toast } from '@/store/toastStore';
 import { useAnalysis } from '@/hooks/useAnalysis';
 import { useAutoFlyToSelection, useAutoFocusEvent, useMap } from '@/hooks/useMap';
 import { useEvents } from '@/hooks/useEvents';
+import { fetchModuleResults, resolveApiUrl } from '@/services';
 import { GlobeViewer } from '@/components/GlobeViewer';
 import { GlobeLegend } from '@/components/GlobeViewer/GlobeLegend';
 import { Sidebar } from '@/components/Sidebar';
@@ -19,6 +21,12 @@ import { LoadingOverlay } from '@/components/LoadingOverlay';
 import { Button } from '@/components/ui/Button';
 import type { CreateAnalysisPayload } from '@/services';
 import type { DetectedEvent, GeoLocation } from '@/types';
+
+/** Compact number formatting for the overlay tiles. */
+function formatNum(value: number | null | undefined, digits = 2): string {
+  if (value === null || value === undefined || Number.isNaN(value)) return '-';
+  return Number(value).toFixed(digits);
+}
 
 export interface WorkspaceProps {
   className?: string;
@@ -32,10 +40,9 @@ export function Workspace({ className }: WorkspaceProps) {
   const [globeFailed, setGlobeFailed] = useState(false);
   const [showFloodOverlay, setShowFloodOverlay] = useState(false);
 
-  // Detect ?result=feni in URL
+  // `?result=<anything>` opens the overlay on load; previously only 'feni' did.
   useEffect(() => {
-    const result = searchParams.get('result');
-    if (result === 'feni') {
+    if (searchParams.get('result')) {
       setShowFloodOverlay(true);
     }
   }, [searchParams]);
@@ -61,6 +68,24 @@ export function Workspace({ className }: WorkspaceProps) {
   const { refetch } = useEvents();
   const { start, isRunning, isDispatching } = useAnalysis();
   const { focusEvent } = useMap();
+
+  /**
+   * The results endpoint serves the latest real artifacts for a module, keyed
+   * on detectionType, so the overlay can show genuine pipeline output without
+   * requiring a job to be dispatched first.
+   */
+  const moduleResultsQuery = useQuery({
+    queryKey: ['module-results', detectionType],
+    queryFn: () => fetchModuleResults(detectionType),
+    staleTime: 30_000,
+    retry: 1,
+  });
+
+  const moduleResult = moduleResultsQuery.data?.data ?? null;
+  const resultsLoading = moduleResultsQuery.isLoading;
+  const overlayImage = resolveApiUrl(moduleResult?.previewUrl);
+  const detectionLabel =
+    DETECTION_TYPES.find((type) => type.id === detectionType)?.label ?? detectionType;
 
   useAutoFlyToSelection(AOI_PRESETS[0] ?? null);
   useAutoFocusEvent();
@@ -151,7 +176,7 @@ export function Workspace({ className }: WorkspaceProps) {
 
         <main className="relative min-h-0 flex-1">
           <GlobeViewer
-            events={[]}
+            events={events}
             selectedEventId={selectedEventId}
             hoveredEventId={hoveredEventId}
             selectedLocation={selectedLocation}
@@ -171,6 +196,14 @@ export function Workspace({ className }: WorkspaceProps) {
                 onClick={() => setComparisonActive(!comparisonActive)}
               >
                 {comparisonActive ? 'Exit slider' : 'Activate slider'}
+              </Button>
+
+              <Button
+                variant={showFloodOverlay ? 'accent' : 'subtle'}
+                size="sm"
+                onClick={() => setShowFloodOverlay((open) => !open)}
+              >
+                {showFloodOverlay ? 'Hide result' : `Show ${detectionLabel} result`}
               </Button>
             </div>
 
@@ -198,15 +231,16 @@ export function Workspace({ className }: WorkspaceProps) {
             </button>
           </GlobeViewer>
 
-          {/* ============ FLOOD RESULT OVERLAY ============ */}
+          {/* ============ MODULE RESULT OVERLAY ============ */}
           {showFloodOverlay && (
             <>
-              {/* Flood mask image - top right */}
               <div className="pointer-events-auto absolute right-4 top-4 z-[1000] w-72 overflow-hidden rounded-xl border-2 border-accent/60 bg-space-950/95 shadow-2xl backdrop-blur-lg">
                 <div className="flex items-center justify-between border-b border-accent/30 px-3 py-2">
                   <div className="flex items-center gap-2">
                     <span className="h-2 w-2 animate-pulse rounded-full bg-signal-critical" />
-                    <p className="text-[11px] font-bold text-accent">NISAR FLOOD MASK</p>
+                    <p className="text-[11px] font-bold text-accent">
+                      NISAR {detectionLabel.toUpperCase()}
+                    </p>
                   </div>
                   <button
                     type="button"
@@ -217,44 +251,93 @@ export function Workspace({ className }: WorkspaceProps) {
                   </button>
                 </div>
 
-                <img
-                  src="/static/feni_flood_detection.png"
-                  alt="Feni Flood Detection"
-                  className="h-auto w-full"
-                  style={{ display: 'block' }}
-                />
+                {overlayImage ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={overlayImage}
+                    alt={`${detectionLabel} detection preview`}
+                    className="h-auto w-full"
+                    style={{ display: 'block' }}
+                  />
+                ) : (
+                  <div className="px-3 py-6 text-center text-[10px] text-ink-faint">
+                    {resultsLoading
+                      ? 'Loading pipeline preview...'
+                      : 'No preview artifact for this module yet.'}
+                  </div>
+                )}
 
                 <div className="border-t border-accent/20 px-3 py-2">
-                  <div className="grid grid-cols-2 gap-2 text-[10px]">
-                    <div>
-                      <p className="text-ink-faint">Coverage</p>
-                      <p className="text-base font-bold text-accent">1.69%</p>
+                  {moduleResult?.available === false ? (
+                    <p className="text-[10px] text-signal-medium">
+                      {moduleResult.message ?? 'No processed artifacts for this module.'}
+                    </p>
+                  ) : (
+                    <div className="grid grid-cols-2 gap-2 text-[10px]">
+                      <div>
+                        <p className="text-ink-faint">Coverage</p>
+                        <p className="text-base font-bold text-accent">
+                          {formatNum(moduleResult?.metadata?.coveragePct)}%
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-ink-faint">Affected Area</p>
+                        <p className="text-base font-bold text-accent">
+                          {formatNum(moduleResult?.totalAreaKm2)} km2
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-ink-faint">Confidence</p>
+                        <p className="text-base font-bold text-accent">
+                          {moduleResult?.meanConfidence != null
+                            ? `${Math.round(moduleResult.meanConfidence * 100)}%`
+                            : '-'}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-ink-faint">Classes</p>
+                        <p className="text-base font-bold text-accent">
+                          {moduleResult?.categories?.length ?? 0}
+                        </p>
+                      </div>
                     </div>
-                    <div>
-                      <p className="text-ink-faint">Affected Area</p>
-                      <p className="text-base font-bold text-accent">41.7 kmÃ‚²</p>
+                  )}
+
+                  {moduleResult?.prediction && (
+                    <div className="mt-2 rounded-md border border-accent/25 bg-accent/8 px-2 py-1.5">
+                      <p className="text-[9px] font-semibold uppercase tracking-wider text-accent">
+                        Risk projection
+                      </p>
+                      <p className="mt-0.5 text-[10px] text-ink">
+                        risk {moduleResult.prediction.risk} &middot; confidence{' '}
+                        {moduleResult.prediction.confidence} &middot; trend{' '}
+                        <span className="font-semibold">{moduleResult.prediction.trend}</span>
+                      </p>
+                      {moduleResult.prediction.basis && (
+                        <p className="mt-0.5 text-[9px] leading-snug text-ink-faint">
+                          {moduleResult.prediction.basis}
+                        </p>
+                      )}
                     </div>
-                    <div>
-                      <p className="text-ink-faint">Confidence</p>
-                      <p className="text-base font-bold text-accent">92%</p>
-                    </div>
-                    <div>
-                      <p className="text-ink-faint">Classes</p>
-                      <p className="text-base font-bold text-accent">4</p>
-                    </div>
-                  </div>
+                  )}
+
                   <div className="mt-2 border-t border-hairline/10 pt-2 text-[9px] text-ink-faint">
-                    <p>Ã°Å¸"Â Feni, Bangladesh</p>
-                    <p>Ã°Å¸""¦ 2026-07-02 Ã¢" ' 2026-09-12</p>
-                    <p>Ã°Å¸"º°Ã¯Â¸Â Track 091 Ã‚· Frame 077</p>
+                    <p>{selectedLocation?.name ?? 'Unspecified AOI'}</p>
+                    <p>
+                      {moduleResult?.metadata?.beforeDate ?? '?'} to{' '}
+                      {moduleResult?.metadata?.afterDate ?? '?'}
+                    </p>
+                    <p>
+                      Track {moduleResult?.metadata?.track ?? '???'} &middot; Frame{' '}
+                      {moduleResult?.metadata?.frame ?? '???'}
+                    </p>
                   </div>
                 </div>
               </div>
 
-              {/* Info banner - bottom center */}
               <div className="pointer-events-none absolute bottom-4 left-1/2 z-[1000] -translate-x-1/2">
                 <div className="rounded-full border border-accent/40 bg-space-950/90 px-4 py-1.5 text-[11px] font-semibold text-accent backdrop-blur-md">
-                  Ã°Å¸"º°Ã¯Â¸Â Flood mask loaded from /static/feni_flood_detection.png
+                  {detectionLabel} mask from {moduleResult?.detectionType ?? detectionType} artifacts
                 </div>
               </div>
             </>

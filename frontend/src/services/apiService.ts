@@ -389,15 +389,33 @@ export async function fetchAnalysisWidgets(jobId: string): Promise<ApiEnvelope<A
   return httpRequest<AnalysisWidget[]>({ url: ENDPOINTS.widgets(jobId), method: 'GET' });
 }
 
-/** GET /api/results/:jobId */
-export async function fetchResults(jobId: string): Promise<ApiEnvelope<ResultDataset>> {
+/** GET /api/results/:jobId?detectionType= */
+export async function fetchResults(
+  jobId: string,
+  detectionType?: string,
+): Promise<ApiEnvelope<ResultDataset>> {
   if (USE_MOCK_API) {
     return mockRequest(
-      { endpoint: ENDPOINTS.results(jobId), params: { jobId }, latencyMs: 520 },
+      { endpoint: ENDPOINTS.results(jobId, detectionType), params: { jobId, detectionType }, latencyMs: 520 },
       () => mockResultDataset(jobId),
     );
   }
-  return httpRequest<ResultDataset>({ url: ENDPOINTS.results(jobId), method: 'GET' });
+  return httpRequest<ResultDataset>({
+    url: ENDPOINTS.results(jobId, detectionType),
+    method: 'GET',
+  });
+}
+
+/**
+ * GET /api/results/:jobId?detectionType= without needing a job id.
+ *
+ * The results endpoint serves the latest pipeline artifacts for a module, so
+ * the dashboard can display real output before (or without) dispatching a job.
+ */
+export async function fetchModuleResults(
+  detectionType: string,
+): Promise<ApiEnvelope<ResultDataset>> {
+  return fetchResults('latest', detectionType);
 }
 
 /** GET /api/mission/summary */

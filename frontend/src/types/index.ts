@@ -201,6 +201,54 @@ export interface ResultDataset {
   timeline: SeriesPoint[];
   /** Confidence histogram for the results table. */
   confidenceBands: SeriesPoint[];
+
+  /* ---------------------------------------------------------------------
+   * Real-artifact fields. Added when the backend was wired to the actual
+   * processing pipeline; all optional so mock fixtures stay valid.
+   * ------------------------------------------------------------------- */
+  jobId?: string;
+  detectionType?: string;
+  /** Backend-relative path, e.g. `/artifacts/feni/feni_flood_mask.tif`. */
+  geotiffUrl?: string | null;
+  /** Backend-relative path; must be prefixed with the API base to load. */
+  previewUrl?: string | null;
+  /** False when no pipeline artifacts exist yet for this module. */
+  available?: boolean;
+  message?: string;
+  metadata?: ResultMetadata;
+  prediction?: RiskPrediction;
+}
+
+/** Acquisition and provenance details for a result. */
+export interface ResultMetadata {
+  beforeDate?: string | null;
+  afterDate?: string | null;
+  track?: string;
+  frame?: string;
+  satellite?: string;
+  instrument?: string;
+  orbit?: string | null;
+  projectionEpsg?: number | null;
+  coveragePct?: number | null;
+  severity?: string | null;
+  method?: string | null;
+  pixelAreaKm2?: number;
+  geocoords?: {
+    center?: { lat: number; lon: number };
+    bbox?: { north: number; south: number; east: number; west: number };
+  };
+}
+
+/** Output of the risk predictor (backend/api/services/ai_predictor.py). */
+export interface RiskPrediction {
+  /** Projected next-period severity, 0..1. */
+  risk: number;
+  /** R^2 of the fit, 0..1. */
+  confidence: number;
+  trend: 'up' | 'down' | 'stable' | 'unknown';
+  observations?: number;
+  /** Human-readable explanation of how the figure was derived. */
+  basis?: string;
 }
 
 /* -------------------------------------------------------------------------- */
