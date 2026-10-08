@@ -132,6 +132,7 @@ and only one date pair exists locally.
 | `e2e_api_probe.py` | probes every endpoint, records status + shape |
 | `verify_frontend_wiring.py` | asserts all 7 modules reachable from the frontend |
 | `test_all_modules.py` | runs all 7 modules end-to-end and flags degenerate output |
+| `test_demo_flow.py` | asserts the Control Panel → analyze → /analyze flow actually connects |
 | `test_crop_and_dispatch.py` | AOI crop correctness + dispatcher error paths |
 | `check_swath_coverage.py` | swath coverage per preset — **run before choosing an AOI** |
 | `find_landslide_aoi.py`, `find_farming_aoi.py` | data-driven AOI selection |
