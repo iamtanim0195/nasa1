@@ -102,12 +102,38 @@ public/cesium
 
 
 # ================= Output Files (Generated) =================
-output/
+# Raw pipeline output stays out of git: the intermediate GeoTIFFs and NPY
+# arrays are tens of megabytes each, and the HDF5 granules behind them are
+# 3.5 GB and cannot be deployed at all.
 *.npy
 *.tif
 *.tiff
 *.h5
 *.hdf5
+
+# EXCEPTION: the small per-module result artifacts ARE committed, so a deployed
+# backend - which has no granules and therefore cannot re-run the pipeline - can
+# still serve real results and preview images. Curated set is ~13 MB:
+#   <module>_metadata.json   what /api/results reads
+#   <module>_preview.png     the overlay image
+#   <module>_mask.tif        the downloadable GeoTIFF
+#
+# These rules must come AFTER the broad globs above, because the LAST matching
+# pattern decides. A bare `output/` would also be wrong: git would not descend
+# into the directory, so no negation inside it could ever re-include a file.
+/output/*
+!/output/*/
+/output/*/*
+!/output/*/*_metadata.json
+!/output/*/*_preview.png
+!/output/*/*_detection.png
+!/output/*/*_mask.tif
+
+# Re-exclude directories that only happen to match the negations above:
+#   _baseline_feni_backup/  a local reproducibility baseline, not a deliverable
+#   preview/                stale PNGs from an earlier pipeline run
+/output/_baseline_feni_backup/
+/output/preview/
 
 # ================= NISAR Data =================
 nisar_data/

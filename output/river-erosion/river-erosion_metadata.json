@@ -1,0 +1,35 @@
+{
+  "beforeDate": "2026-07-02",
+  "afterDate": "2026-09-12",
+  "track": "091",
+  "frame": "077",
+  "satellite": "NISAR",
+  "instrument": "L-band SAR",
+  "projectionEpsg": 32646,
+  "aoiWindow": {
+    "y_start": 1503,
+    "y_end": 4503,
+    "x_start": 1672,
+    "x_end": 4672
+  },
+  "stats": {
+    "coveragePct": 6.726,
+    "affectedAreaKm2": 142.555,
+    "erodedAreaKm2": 142.555,
+    "accretedAreaKm2": 60.863,
+    "netChangeKm2": 81.692,
+    "erodedPixels": 356387,
+    "accretedPixels": 152158,
+    "maxErosionM": 1620.0,
+    "meanErosionM": 100.1,
+    "erosionDistanceCappedPct": 100.0,
+    "totalPixels": 5298725,
+    "waterThresholdDb": -15.0,
+    "beforeWaterKm2": 702.764,
+    "afterWaterKm2": 784.455,
+    "pixelAreaKm2": 0.0004,
+    "meanConfidence": 0.794
+  },
+  "method": "water = HH < -15.0 dB; per-row bank-line displacement",
+  "processed_at": "2026-10-08T06:00:25.225055"
+}
