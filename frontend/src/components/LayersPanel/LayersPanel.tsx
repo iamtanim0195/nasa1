@@ -1,4 +1,4 @@
-﻿'use client';
+'use client';
 
 import { Check } from 'lucide-react';
 import { LAYERS } from '@/lib/constants';
@@ -28,7 +28,7 @@ const SWATCH: Record<LayerType, string> = {
  * Basemap switcher.
  *
  * Rendered as radio cards rather than a dropdown so the active basemap is
- * always visible â€” on a globe, "which map am I looking at" is a safety-critical
+ * always visible "” on a globe, "which map am I looking at" is a safety-critical
  * piece of context, not a preference.
  */
 export function LayersPanel({ activeLayer, onLayerChange, className }: LayersPanelProps) {

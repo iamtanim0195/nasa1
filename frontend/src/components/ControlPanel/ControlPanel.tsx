@@ -5,7 +5,7 @@ import { Crosshair, Radar, Target } from 'lucide-react';
 import { DETECTION_TYPES, DETECTION_TYPE_MAP } from '@/lib/constants';
 import { cn, formatCoordinate } from '@/lib/utils';
 import { useAppStore } from '@/store/appStore';
-import { useSarData } from '@/hooks/useSarData';
+import { useNisarSearch } from '@/hooks/useNisarSearch';
 import { Button } from '@/components/ui/Button';
 import { Select } from '@/components/ui/Select';
 import { Icon } from '@/components/ui/Icon';
@@ -13,19 +13,14 @@ import { PanelDivider } from '@/components/ui/GlassPanel';
 import { SearchBar } from '@/components/SearchBar';
 import type { DateRange, DetectionType, GeoLocation } from '@/types';
 import { DateField } from './DateField';
-import { SarDropzone } from './SarDropzone';
+import { NisarFileBrowser } from './NisarFileBrowser';
 
 export interface ControlPanelProps {
   className?: string;
-  /** Fires when the operator changes the manual location selection. */
   onLocationChange?: (location: GeoLocation) => void;
-  /** API-ready: detection type changed. */
   onDetectionTypeSelect?: (type: DetectionType) => void;
-  /** API-ready: observation window changed. */
   onDateRangeChange?: (range: DateRange) => void;
-  /** API-ready: a SAR file was accepted for ingest. */
   onSarDataUpload?: (file: File) => void;
-  /** API-ready: dispatch the analysis job. */
   onRunAnalysis?: () => void;
 }
 
@@ -33,16 +28,14 @@ export interface ControlPanelProps {
  * CONTROL PANEL.
  *
  * Owns the four inputs that define a job: where, what, when, and with which
- * dataset. It never calls the API directly — every action is emitted through a
- * callback *and* reflected into the store, so the panel can be dropped into a
- * different shell (or driven by a test) without rewriting it.
+ * dataset. Integration: instead of a SAR dropzone, the operator searches
+ * NASA Earthdata for available NISAR granules.
  */
 export function ControlPanel({
   className,
   onLocationChange,
   onDetectionTypeSelect,
   onDateRangeChange,
-  onSarDataUpload,
   onRunAnalysis,
 }: ControlPanelProps) {
   const selectedLocation = useAppStore((state) => state.selectedLocation);
@@ -52,32 +45,31 @@ export function ControlPanel({
   const setDateRange = useAppStore((state) => state.setDateRange);
   const selectLocation = useAppStore((state) => state.selectLocation);
 
-  const { dataset, isUploading, uploadProgress, upload, reset } = useSarData();
-
-  /* ------------------------------------------------------------------ */
-  /* Validation                                                          */
-  /* ------------------------------------------------------------------ */
+  const {
+    files,
+    isSearching,
+    search,
+    clearSearch,
+    analyze,
+    isAnalyzing,
+  } = useNisarSearch();
 
   const dateError = useMemo(() => {
     const { before, after } = dateRange;
     if (!before || !after) return null;
     if (new Date(before) >= new Date(after)) {
-      return 'The “After” date must be later than the “Before” date.';
+      return 'The "After" date must be later than the "Before" date.';
     }
     return null;
   }, [dateRange]);
 
-  const canRun =
+  const canSearch =
     Boolean(selectedLocation) &&
     Boolean(dateRange.before) &&
     Boolean(dateRange.after) &&
     !dateError;
 
   const detection = DETECTION_TYPE_MAP[detectionType];
-
-  /* ------------------------------------------------------------------ */
-  /* Handlers                                                            */
-  /* ------------------------------------------------------------------ */
 
   const handleDetectionChange = (value: DetectionType) => {
     setDetectionType(value);
@@ -89,28 +81,38 @@ export function ControlPanel({
     onDateRangeChange?.({ ...dateRange, ...patch });
   };
 
-  const handleFile = (file: File) => {
-    upload(file);
-    onSarDataUpload?.(file);
+  const handleSearch = () => {
+    if (!selectedLocation || !dateRange.before || !dateRange.after) return;
+
+    // Build WKT from bbox or use a default AOI around the location
+    const bbox = selectedLocation.bbox ?? [
+      selectedLocation.lng - 0.1,
+      selectedLocation.lat - 0.1,
+      selectedLocation.lng + 0.1,
+      selectedLocation.lat + 0.1,
+    ];
+    const wkt = `POLYGON((${bbox[0]} ${bbox[1]}, ${bbox[2]} ${bbox[1]}, ${bbox[2]} ${bbox[3]}, ${bbox[0]} ${bbox[3]}, ${bbox[0]} ${bbox[1]}))`;
+
+    search({
+      wkt,
+      beforeDate: dateRange.before,
+      afterDate: dateRange.after,
+      detectionType,
+    });
   };
+
+  const handleAnalyze = (beforeFileId: string, afterFileId: string) => { if (!selectedLocation) return; const bbox = selectedLocation.bbox ?? [selectedLocation.lng - 0.1, selectedLocation.lat - 0.1, selectedLocation.lng + 0.1, selectedLocation.lat + 0.1]; const wkt = 'POLYGON((' + bbox[0] + ' ' + bbox[1] + ', ' + bbox[2] + ' ' + bbox[1] + ', ' + bbox[2] + ' ' + bbox[3] + ', ' + bbox[0] + ' ' + bbox[3] + ', ' + bbox[0] + ' ' + bbox[1] + '))'; analyze({ wkt, beforeFileId, afterFileId }); if (typeof window !== 'undefined') { setTimeout(() => { window.location.href = '/analyze?stage=dsard'; }, 800); } onRunAnalysis?.(); };
 
   return (
     <div className={cn('space-y-3.5', className)}>
-      {/* ---------------- Location ---------------- */}
+      {/* Location */}
       <div>
         <span className="mb-1.5 block text-[10px] font-semibold uppercase tracking-[0.12em] text-accent">
           Location Input
         </span>
 
-        {/*
-          Free text only — any country, region, city or coordinate pair. There is
-          deliberately no fixed list of areas here: an operator monitoring an
-          arbitrary country should not be limited to someone else's shortlist.
-          The search box is the same component the rail uses, so the grammars are
-          identical in both places.
-        */}
         <SearchBar
-          placeholder="Any country, city, region or lat, lng…"
+          placeholder="Any country, city, region or lat, lngâ€¦"
           showHelper={false}
           showSelectedSummary={false}
           onLocationSelect={onLocationChange}
@@ -141,7 +143,7 @@ export function ControlPanel({
           <div className="mt-2 flex items-center gap-2 rounded-xl border border-dashed border-hairline/14 bg-elevate/3 p-2.5">
             <Crosshair className="h-3.5 w-3.5 shrink-0 text-ink-faint" />
             <p className="text-[10.5px] text-ink-muted">
-              Type any country, region, city — or paste coordinates.
+              Type any country, region, city â€” or paste coordinates.
             </p>
           </div>
         )}
@@ -149,7 +151,7 @@ export function ControlPanel({
 
       <PanelDivider />
 
-      {/* ---------------- Detection mode ---------------- */}
+      {/* Detection mode */}
       <div>
         <Select<DetectionType>
           label="Detection Mode"
@@ -178,7 +180,7 @@ export function ControlPanel({
 
       <PanelDivider />
 
-      {/* ---------------- Dates ---------------- */}
+      {/* Dates */}
       <div>
         <div className="mb-1.5 flex items-center justify-between">
           <span className="text-[10px] font-semibold uppercase tracking-[0.12em] text-accent">
@@ -215,46 +217,45 @@ export function ControlPanel({
         </div>
       </div>
 
-      <PanelDivider label="Ingest" />
+      <PanelDivider label="NISAR Data" />
 
-      {/* ---------------- SAR data ---------------- */}
-      <SarDropzone
-        dataset={dataset}
-        isUploading={isUploading}
-        uploadProgress={uploadProgress}
-        onFileAccepted={handleFile}
-        onClear={reset}
-      />
-
-      {/* ---------------- Actions ---------------- */}
-      <div className="space-y-2 pt-0.5">
+      {/* Search button */}
+      {files.length === 0 && !isSearching && (
         <Button
-          variant="accent"
+          variant="outline"
           size="md"
           fullWidth
           icon={<Radar className="h-4 w-4" />}
-          onClick={onRunAnalysis}
-          disabled={!canRun}
+          onClick={handleSearch}
+          disabled={!canSearch}
         >
-          Run Analysis
+          Search NISAR Files
         </Button>
+      )}
 
-        {!canRun && (
-          <p className="text-center text-[10px] text-ink-faint">
-            {!selectedLocation
-              ? 'Select a location to continue.'
-              : dateError
-                ? 'Fix the observation window.'
-                : 'Set both dates to continue.'}
-          </p>
-        )}
-      </div>
+      {/* NISAR File Browser */}
+      <NisarFileBrowser
+        files={files}
+        isSearching={isSearching}
+        onAnalyze={handleAnalyze}
+        onClear={clearSearch}
+      />
 
-      {/* Dataset readiness hint for the backend team / demo operator. */}
-      {dataset && dataset.status !== 'ready' && (
-        <p className="flex items-center gap-1.5 rounded-lg border border-signal-medium/25 bg-signal-medium/8 px-2 py-1.5 text-[10px] text-signal-medium">
+      {/* Status hint */}
+      {!canSearch && files.length === 0 && (
+        <p className="text-center text-[10px] text-ink-faint">
+          {!selectedLocation
+            ? 'Select a location to continue.'
+            : dateError
+              ? 'Fix the observation window.'
+              : 'Set both dates to continue.'}
+        </p>
+      )}
+
+      {isAnalyzing && (
+        <p className="flex items-center gap-1.5 rounded-lg border border-accent/25 bg-accent/8 px-2 py-1.5 text-[10px] text-accent">
           <Icon name="ScanLine" className="h-3 w-3" />
-          Dataset is still ingesting — analysis can be queued and will wait server-side.
+          Analysis is running on the backendâ€¦
         </p>
       )}
     </div>

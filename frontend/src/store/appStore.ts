@@ -123,8 +123,8 @@ export interface AppState {
 }
 
 const DEFAULT_DATE_RANGE: DateRange = {
-  before: '2025-01-15',
-  after: '2025-06-20',
+  before: '2026-06-25',
+  after: '2026-09-30',
 };
 
 export const DEFAULT_EVENT_FILTER: EventFilter = {
@@ -143,7 +143,7 @@ const INITIAL = {
   // On by default: the globe turns slowly about its own axis until the pointer
   // reaches it. Hovering suspends the spin without touching this flag, so the
   // header play/pause button is the only thing that owns this value.
-  autoRotate: true,
+  autoRotate: false,
   globeReady: false,
   globeError: null,
 
@@ -300,7 +300,7 @@ export const useAppStore = create<AppState>()((set) => ({
  * Client-side mirror of the server filter.
  *
  * The backend remains authoritative, but this is applied on top of the response
- * so the list stays correct even against a backend that ignores a filter param —
+ * so the list stays correct even against a backend that ignores a filter param Ã¢â‚¬"
  * and it keeps typing in the EVENTS search box instant while a refetch is in
  * flight.
  */

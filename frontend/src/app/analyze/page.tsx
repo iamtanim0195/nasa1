@@ -78,11 +78,11 @@ function AnalyzeContent() {
                   <>
                     {selectedLocation.name} ·{' '}
                     <span className="telemetry">
-                      {dateRange.before ?? '—'} → {dateRange.after ?? '—'}
+                      {dateRange.before ?? '"”'} â†’ {dateRange.after ?? '"”'}
                     </span>
                   </>
                 ) : (
-                  'No AOI selected — define a job on the dashboard.'
+                  'No AOI selected "” define a job on the dashboard.'
                 )}
               </p>
             </div>
@@ -142,15 +142,6 @@ function AnalyzeContent() {
             {stage === 'analyzing' && <AnalyzingPanel />}
             {stage === 'result' && <ResultPanel />}
           </div>
-
-          {/* Footer note about the backend boundary */}
-          <footer className="rounded-xl border border-hairline/8 bg-elevate/3 px-3.5 py-2.5">
-            <EmptyState
-              compact
-              title="Data source"
-              description="Every panel on this page renders whatever the analysis API returns. With NEXT_PUBLIC_USE_MOCK_API=true the responses are deterministic fixtures; set it to false and provide NEXT_PUBLIC_API_BASE_URL to switch to the live backend."
-            />
-          </footer>
         </div>
       </div>
     </div>

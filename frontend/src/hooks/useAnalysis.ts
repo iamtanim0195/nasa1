@@ -74,6 +74,21 @@ export interface UseAnalysisResult {
  */
 export function useAnalysis(): UseAnalysisResult {
   const jobId = useAppStore((state) => state.jobId);
+// Restore jobId from localStorage on mount
+useEffect(() => {
+  if (typeof window !== 'undefined' && !jobId) {
+    const storedJobId = localStorage.getItem('activeJobId');
+    const storedJobData = localStorage.getItem('activeJobData');
+    if (storedJobId && storedJobData) {
+      try {
+        const jobData = JSON.parse(storedJobData);
+        startAnalysis(jobData);
+      } catch (e) {
+        console.warn('Could not restore job:', e);
+      }
+    }
+  }
+}, []); // eslint-disable-line react-hooks/exhaustive-deps
   const job = useAppStore((state) => state.job);
   const setJob = useAppStore((state) => state.setJob);
   const startAnalysis = useAppStore((state) => state.startAnalysis);
@@ -89,12 +104,17 @@ export function useAnalysis(): UseAnalysisResult {
   const isComplete = progress >= 100 && job !== null;
 
   /* ---- 1. start ---- */
-  const startMutation = useMutation({
-    mutationFn: (payload: CreateAnalysisPayload) => createAnalysisJob(payload),
-    onSuccess: (envelope) => {
-      startAnalysis(envelope.data);
-      toast.info('Analysis queued', `${envelope.data.id} is running through D-SAR-D.`);
-    },
+const startMutation = useMutation({
+  mutationFn: (payload: CreateAnalysisPayload) => createAnalysisJob(payload),
+  onSuccess: (envelope) => {
+    startAnalysis(envelope.data);
+    // Persist jobId in localStorage so it survives navigation
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('activeJobId', envelope.data.id);
+      localStorage.setItem('activeJobData', JSON.stringify(envelope.data));
+    }
+    toast.info('Analysis queued', `${envelope.data.id} is running through D-SAR-D.`);
+  },
     onError: (error) => {
       const apiError = ApiError.from(error);
       toast.error('Could not start the analysis', apiError.message);

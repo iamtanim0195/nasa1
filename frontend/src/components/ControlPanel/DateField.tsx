@@ -21,14 +21,11 @@ import { cn, toIsoDate } from '@/lib/utils';
 
 export interface DateFieldProps {
   label: string;
-  /** ISO `yyyy-MM-dd`, or null when unset. */
   value: string | null;
   onChange: (value: string | null) => void;
-  /** Inclusive ISO bounds. */
   min?: string;
   max?: string;
   className?: string;
-  /** Shown under the field, e.g. "must be before the After date". */
   hint?: string;
   error?: string | null;
   disabled?: boolean;
@@ -42,14 +39,6 @@ function toDate(value: string | null | undefined): Date | null {
   return Number.isNaN(parsed.getTime()) ? null : parsed;
 }
 
-/**
- * Calendar popup.
- *
- * Implemented in-house rather than pulled from a date-picker dependency: the
- * component has to sit inside a glass panel on a dark globe, respect ISO-only
- * wire formats, and support inclusive min/max windows that the backend will
- * enforce anyway. A ~150-line component beats a dependency here.
- */
 export function DateField({
   label,
   value,
@@ -62,15 +51,18 @@ export function DateField({
   disabled,
 }: DateFieldProps) {
   const [open, setOpen] = useState(false);
-  const [viewMonth, setViewMonth] = useState<Date>(() => toDate(value) ?? new Date());
+  const [inputText, setInputText] = useState(value ?? '');
+  const [viewMonth, setViewMonth] = useState<Date>(() => toDate(value) ?? new Date(2026, 5, 1));
   const containerRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
 
   const selected = useMemo(() => toDate(value), [value]);
   const minDate = useMemo(() => toDate(min), [min]);
   const maxDate = useMemo(() => toDate(max), [max]);
 
-  // Follow external value changes (e.g. range validation correcting a field).
+  // Sync input text when value changes externally
   useEffect(() => {
+    setInputText(value ?? '');
     const next = toDate(value);
     if (next) setViewMonth(next);
   }, [value]);
@@ -113,13 +105,67 @@ export function DateField({
 
   const today = new Date();
 
+  // Handle manual typing: "2026-06-25" or "20260625" or "25/06/2026"
+  const handleInputBlur = () => {
+    const raw = inputText.trim();
+    if (!raw) {
+      onChange(null);
+      return;
+    }
+
+    // Try to parse various formats
+    let parsed: Date | null = null;
+
+    // YYYY-MM-DD
+    if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) {
+      parsed = parseISO(raw);
+    }
+    // YYYYMMDD
+    else if (/^\d{8}$/.test(raw)) {
+      const y = raw.slice(0, 4);
+      const m = raw.slice(4, 6);
+      const d = raw.slice(6, 8);
+      parsed = parseISO(`${y}-${m}-${d}`);
+    }
+    // DD/MM/YYYY
+    else if (/^\d{2}\/\d{2}\/\d{4}$/.test(raw)) {
+      const [d, m, y] = raw.split('/');
+      parsed = parseISO(`${y}-${m}-${d}`);
+    }
+    // MM/DD/YYYY
+    else if (/^\d{1,2}\/\d{1,2}\/\d{4}$/.test(raw)) {
+      const [m, d, y] = raw.split('/');
+      parsed = parseISO(`${y}-${m.padStart(2, '0')}-${d.padStart(2, '0')}`);
+    }
+
+    if (parsed && !Number.isNaN(parsed.getTime())) {
+      const iso = toIsoDate(parsed);
+      onChange(iso);
+      setViewMonth(parsed);
+    } else {
+      // Invalid — reset to current value
+      setInputText(value ?? '');
+    }
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      handleInputBlur();
+    }
+    if (e.key === 'Escape') {
+      setInputText(value ?? '');
+      inputRef.current?.blur();
+    }
+  };
+
   return (
     <div ref={containerRef} className={cn('relative w-full', className)}>
       <span className="mb-1.5 block text-[10px] font-semibold uppercase tracking-[0.12em] text-accent">
         {label}
       </span>
 
-      {/* Trigger */}
+      {/* Trigger with editable input */}
       <div
         className={cn(
           'flex h-10 items-center gap-2 rounded-xl border bg-sunken px-2.5 transition-colors',
@@ -131,30 +177,39 @@ export function DateField({
           disabled && 'cursor-not-allowed opacity-50',
         )}
       >
+        {/* Calendar icon button (opens calendar) */}
         <button
           type="button"
           disabled={disabled}
           onClick={() => setOpen((state) => !state)}
           aria-haspopup="dialog"
           aria-expanded={open}
-          aria-label={`${label}: ${value ?? 'not set'}`}
-          className="flex h-full min-w-0 flex-1 items-center gap-2 text-left"
+          aria-label={`Open calendar for ${label}`}
+          className="shrink-0 text-ink-faint hover:text-accent"
         >
-          <Calendar className="h-3.5 w-3.5 shrink-0 text-ink-faint" aria-hidden />
-          <span
-            className={cn(
-              'telemetry truncate text-[11.5px]',
-              value ? 'text-ink' : 'text-ink-faint',
-            )}
-          >
-            {value ?? 'Select date'}
-          </span>
+          <Calendar className="h-3.5 w-3.5" aria-hidden />
         </button>
+
+        {/* Editable text input */}
+        <input
+          ref={inputRef}
+          type="text"
+          value={inputText}
+          onChange={(e) => setInputText(e.target.value)}
+          onBlur={handleInputBlur}
+          onKeyDown={handleKeyDown}
+          disabled={disabled}
+          placeholder="YYYY-MM-DD"
+          className="telemetry h-full min-w-0 flex-1 bg-transparent text-[11.5px] text-ink outline-none placeholder:text-ink-faint/50"
+        />
 
         {value && !disabled && (
           <button
             type="button"
-            onClick={() => onChange(null)}
+            onClick={() => {
+              onChange(null);
+              setInputText('');
+            }}
             aria-label={`Clear ${label}`}
             className="rounded-md p-1 text-ink-faint transition-colors hover:bg-elevate/8 hover:text-ink"
           >
@@ -163,13 +218,50 @@ export function DateField({
         )}
       </div>
 
-      {/* Popup */}
+      {/* Popup calendar */}
       {open && (
         <div
           role="dialog"
           aria-label={`${label} calendar`}
           className="absolute left-0 top-[calc(100%+6px)] z-chrome w-[17.5rem] rounded-xl border border-accent/25 bg-space-900/97 p-3 shadow-glass backdrop-blur-xl"
         >
+          {/* Quick year/month jumps */}
+          <div className="mb-2 flex flex-wrap gap-1">
+            <button
+              type="button"
+              onClick={() => {
+                const d = new Date(2026, 5, 25); // June 25, 2026
+                onChange(toIsoDate(d));
+                setOpen(false);
+              }}
+              className="rounded border border-hairline/10 px-1.5 py-0.5 text-[9px] text-ink-muted hover:border-accent/40 hover:text-accent"
+            >
+              Jun 2026
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                const d = new Date(2026, 8, 30); // Sept 30, 2026
+                onChange(toIsoDate(d));
+                setOpen(false);
+              }}
+              className="rounded border border-hairline/10 px-1.5 py-0.5 text-[9px] text-ink-muted hover:border-accent/40 hover:text-accent"
+            >
+              Sep 2026
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                const d = new Date(2026, 11, 31); // Dec 31, 2026
+                onChange(toIsoDate(d));
+                setOpen(false);
+              }}
+              className="rounded border border-hairline/10 px-1.5 py-0.5 text-[9px] text-ink-muted hover:border-accent/40 hover:text-accent"
+            >
+              Dec 2026
+            </button>
+          </div>
+
           {/* Month navigation */}
           <div className="mb-2.5 flex items-center justify-between">
             <button

@@ -78,8 +78,7 @@ export function useEvents(): UseEventsResult {
       filter.minConfidence,
       filter.query.trim().toLowerCase(),
     ],
-    queryFn: () =>
-      fetchEvents({
+    queryFn: () => fetchEvents({
         detectionTypes: filter.detectionTypes.length ? filter.detectionTypes : undefined,
         severities: filter.severities.length ? filter.severities : undefined,
         minConfidence: filter.minConfidence || undefined,

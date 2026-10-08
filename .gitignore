@@ -95,3 +95,36 @@ public/cesium
 
 # ===== Jupyter =====
 .ipynb_checkpoints/
+
+
+# ================= Output Files (Generated) =================
+output/
+*.npy
+*.tif
+*.tiff
+*.h5
+*.hdf5
+
+# ================= NISAR Data =================
+nisar_data/
+
+# ================= Extra Files =================
+nasa1/
+nasa1.zip
+*.zip
+
+# ================= Auth =================
+.netrc
+_netrc
+
+# ================= Stray nested copy =================
+# A second full checkout of the frontend (with its own node_modules) that
+# `tsconfig.json` was type-checking, which broke `next build`. Now excluded from
+# the build; also kept out of git so it cannot bloat the repo (~600 MB).
+frontend/earth-metamorphosis/
+
+# ================= Editor / manual backups =================
+# Snapshot copies left in the tree (e.g. Workspace.tsx.backup_20261007_210000).
+# These sit inside tsconfig's include and previously produced build errors.
+*.backup_*
+*.bak

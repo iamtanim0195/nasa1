@@ -18,7 +18,7 @@ export interface DsardPanelProps {
 }
 
 /**
- * D-SAR-D — the deterministic SAR difference pipeline.
+ * D-SAR-D ÃƒÂ¢Ã¢"šÂ¬Ã¢â‚¬Â the deterministic SAR difference pipeline.
  *
  * A frontend mockup of the processing workflow: it renders whatever
  * `GET /api/analyze/:jobId` reports per step and never simulates work itself.
@@ -87,7 +87,7 @@ export function DsardPanel({ className, onStart }: DsardPanelProps) {
             </p>
             <p className="mt-0.5 text-[11px] text-ink-muted">
               Started {formatDateTime(job.startedAt)} UTC
-              {job.etaSeconds ? ` · ETA ${job.etaSeconds}s` : ''}
+              {job.etaSeconds ? ` Ãƒ"šÃ‚· ETA ${job.etaSeconds}s` : ''}
             </p>
           </div>
 
@@ -212,7 +212,12 @@ export function DsardPanel({ className, onStart }: DsardPanelProps) {
             size="sm"
             fullWidth
             className="mt-4"
-            onClick={() => setActiveStage('extracting')}
+            onClick={() => {
+                setActiveStage('extracting');
+                if (typeof window !== 'undefined') {
+                  window.location.href = '/?result=feni';
+                }
+              }}
           >
             View extraction results
           </Button>

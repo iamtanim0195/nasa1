@@ -418,6 +418,113 @@ export async function fetchMissionSummary(): Promise<ApiEnvelope<MissionSummary>
  * Namespaced facade — import either the individual functions above (tree
  * shakeable) or this object when a single injection point is more convenient.
  */
+
+/* ========================================================================== */
+/*  NISAR Integration (Real Backend)                                          */
+/* ========================================================================== */
+
+export interface NisarFile {
+  id: string;
+  granuleId: string;
+  date: string;
+  time: string;
+  track: string;
+  frame: string;
+  orbit: string;
+  sizeBytes: number;
+  sizeGB: number;
+  isDownloaded?: boolean;
+}
+
+export interface SearchNisarRequest {
+  wkt: string;
+  beforeDate: string;
+  afterDate: string;
+  detectionType: DetectionType;
+}
+
+export interface SearchNisarResponse {
+  files: NisarFile[];
+  total: number;
+  bbox: [number, number, number, number];
+  beforeDate: string;
+  afterDate: string;
+}
+
+export interface AnalyzeNisarRequest {
+  wkt: string;
+  beforeFileId: string;
+  afterFileId: string;
+  detectionType: DetectionType;
+}
+
+export interface AnalyzeNisarResponse {
+  jobId: string;
+  status: string;
+}
+
+export interface NisarJobStatus {
+  jobId: string;
+  status: 'running' | 'complete' | 'error';
+  stage: 'dsard' | 'extracting' | 'analyzing' | 'result';
+  progress: number;
+  startedAt: string;
+  detectionType: string;
+  result?: {
+    jobId: string;
+    detectionType: string;
+    stats: {
+      coveragePct: number;
+      floodPixels?: number;
+      totalPixels?: number;
+      affectedAreaKm2?: number;
+    };
+  };
+  errorMessage?: string;
+}
+
+/** POST /api/search-nisar-files */
+export async function searchNisarFiles(
+  payload: SearchNisarRequest,
+): Promise<ApiEnvelope<SearchNisarResponse>> {
+  return httpRequest<SearchNisarResponse>({
+    url: ENDPOINTS.searchNisarFiles,
+    method: 'POST',
+    data: payload,
+  });
+}
+
+/** POST /api/analyze-nisar */
+export async function analyzeNisar(
+  payload: AnalyzeNisarRequest,
+): Promise<ApiEnvelope<AnalyzeNisarResponse>> {
+  return httpRequest<AnalyzeNisarResponse>({
+    url: ENDPOINTS.analyzeNisar,
+    method: 'POST',
+    data: payload,
+  });
+}
+
+/** GET /api/analyze-nisar/:jobId */
+export async function fetchNisarJobStatus(
+  jobId: string,
+): Promise<ApiEnvelope<NisarJobStatus>> {
+  return httpRequest<NisarJobStatus>({
+    url: ENDPOINTS.analyzeNisarJob(jobId),
+    method: 'GET',
+  });
+}
+
+/** GET /api/analyze-nisar/:jobId/result */
+export async function fetchNisarResult(
+  jobId: string,
+): Promise<ApiEnvelope<NisarJobStatus['result']>> {
+  return httpRequest<NisarJobStatus['result']>({
+    url: ENDPOINTS.analyzeNisarResult(jobId),
+    method: 'GET',
+  });
+}
+
 export const apiService = {
   searchLocations,
   fetchEvents,
@@ -431,6 +538,11 @@ export const apiService = {
   fetchResults,
   fetchMissionSummary,
   resetMockServiceState,
+  // NISAR Integration
+  searchNisarFiles,
+  analyzeNisar,
+  fetchNisarJobStatus,
+  fetchNisarResult,
 } as const;
 
 /** Severity helper re-exported so views never import from lib/constants twice. */

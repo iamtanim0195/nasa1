@@ -35,6 +35,8 @@ export interface GlobeViewerProps {
   activeLayer: LayerType;
   autoRotate: boolean;
   comparisonActive: boolean;
+  /** Flood-overlay toggle state, driven by the Workspace toolbar. */
+  floodMaskActive?: boolean;
   onSelectEvent?: (eventId: string | null) => void;
   onHoverEvent?: (eventId: string | null) => void;
   onReady?: () => void;
@@ -51,7 +53,7 @@ type Status = 'loading' | 'ready' | 'error';
  *
  * React owns the *container*; Cesium owns everything inside it. Props are
  * projected onto the scene through narrow effects so the viewer is created
- * exactly once and never rebuilt on a state change — rebuilding a WebGL context
+ * exactly once and never rebuilt on a state change ÃƒÆ’Ã†'Ãƒ"šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢"šÂ¬Ã…Â¡Ãƒ"šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒ"šÃ‚Â rebuilding a WebGL context
  * on every keystroke is the classic way to make a GIS dashboard stutter.
  */
 export function GlobeViewer({
@@ -159,7 +161,7 @@ export function GlobeViewer({
             enabled: liveController.enableZoom,
             minimumZoomDistance: liveController.minimumZoomDistance,
             maximumZoomDistance: liveController.maximumZoomDistance,
-            // 0 LEFT_DRAG · 1 RIGHT_DRAG · 2 MIDDLE_DRAG · 3 WHEEL · 4 PINCH
+            // 0 LEFT_DRAG ÃƒÆ’Ã†'ÃƒÂ¢Ã¢"šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒ"šÃ‚· 1 RIGHT_DRAG ÃƒÆ’Ã†'ÃƒÂ¢Ã¢"šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒ"šÃ‚· 2 MIDDLE_DRAG ÃƒÆ’Ã†'ÃƒÂ¢Ã¢"šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒ"šÃ‚· 3 WHEEL ÃƒÆ’Ã†'ÃƒÂ¢Ã¢"šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒ"šÃ‚· 4 PINCH
             eventTypes: liveController.zoomEventTypes,
             cameraHeightMetres: Math.round(
               // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -344,7 +346,7 @@ export function GlobeViewer({
                 Initialising globe
               </p>
               <p className="mt-1 text-[11px] text-ink-faint">
-                Loading the Cesium runtime and imagery pipeline…
+                Loading the Cesium runtime and imagery pipelineÃƒÆ’Ã†'Ãƒ"šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢"šÂ¬Ã…Â¡Ãƒ"šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒ"šÃ‚Â¦
               </p>
             </div>
           </div>
@@ -363,7 +365,7 @@ export function GlobeViewer({
               {failure}
             </p>
             <p className="mt-2 text-[10px] text-ink-faint">
-              The rest of the console stays usable — panels, filters and analysis all work without
+              The rest of the console stays usable ÃƒÆ’Ã†'Ãƒ"šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢"šÂ¬Ã…Â¡Ãƒ"šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒ"šÃ‚Â panels, filters and analysis all work without
               the 3D view.
             </p>
             <Button
