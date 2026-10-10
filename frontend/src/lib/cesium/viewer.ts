@@ -450,7 +450,7 @@ export type { AutoRotateHandle, AutoRotateOptions } from './rotation';
 
 /**
  * Zooms by a fraction of the current camera height, so one step feels the same
- * at 200 km as it does at 20 000 km. Needs only the camera, hence no namespace.
+ * at 200 km as it does at 20 000 km2 Needs only the camera, hence no namespace.
  */
 export function zoomBy(viewer: any, fraction: number): void {
   const height = viewer.camera.positionCartographic.height;

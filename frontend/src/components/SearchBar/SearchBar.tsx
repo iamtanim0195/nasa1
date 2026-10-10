@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { Crosshair, Loader2, MapPin, Search, X } from 'lucide-react';
@@ -12,9 +12,9 @@ import type { GeoLocation } from '@/types';
 export interface SearchBarProps {
   className?: string;
   placeholder?: string;
-  /** Fires after a result is chosen — the API-ready integration point. */
+  /** Fires after a result is chosen â€” the API-ready integration point. */
   onLocationSelect?: (location: GeoLocation) => void;
-  /** Hide the "Try Sundarbans, Nepal…" hint line. */
+  /** Hide the "Try Sundarbans, Nepalâ€¦" hint line. */
   showHelper?: boolean;
   /**
    * Hide the selected-location chip. The control panel renders its own, fuller
@@ -27,7 +27,7 @@ export interface SearchBarProps {
  * Location search.
  *
  * One box, several grammars: country, region, city, place name, or raw
- * coordinates. Keyboard-first (↑ ↓ Enter Esc) because analysts drive this
+ * coordinates. Keyboard-first (â†‘ â†“ Enter Esc) because analysts drive this
  * console from the keyboard.
  *
  * Used twice: once at the top of the rail as the global search, and once inside
@@ -36,7 +36,7 @@ export interface SearchBarProps {
  */
 export function SearchBar({
   className,
-  placeholder = 'Search country, city, region, coordinates…',
+  placeholder = 'Search country, city, region, coordinatesâ€¦',
   onLocationSelect,
   showHelper = true,
   showSelectedSummary = true,
@@ -54,7 +54,7 @@ export function SearchBar({
 
   const showPanel = open && query.trim().length >= 2;
 
-  /* Close on outside click — the result list floats above the panels. */
+  /* Close on outside click â€” the result list floats above the panels. */
   useEffect(() => {
     if (!showPanel) return;
 
@@ -104,8 +104,8 @@ export function SearchBar({
       // The list stays mounted so the failure is visible in context.
       return null;
     }
-    if (isCoordinateQuery) return 'Coordinate pair detected — resolved locally, no round trip.';
-    return 'Try “Sundarbans”, “Nepal”, or “23.81, 90.41”.';
+    if (isCoordinateQuery) return 'Coordinate pair detected â€” resolved locally, no round trip.';
+    return 'Try â€œSundarbansâ€, â€œNepalâ€, or â€œ23.81, 90.41â€.';
   }, [isCoordinateQuery, isError, error]);
 
   return (
@@ -166,7 +166,7 @@ export function SearchBar({
             {selectedLocation.name}
           </span>
           <span className="telemetry shrink-0 text-[10px] text-ink-faint">
-            {formatCoordinate(selectedLocation, 2)}
+            {formatCoordinate(selectedLocation)}
           </span>
         </div>
       )}
@@ -185,14 +185,14 @@ export function SearchBar({
                 Location search failed
               </p>
               <p className="mt-0.5 text-[10px] text-ink-faint">
-                The service is unreachable. Coordinates still work — type “lat, lng”.
+                The service is unreachable. Coordinates still work â€” type â€œlat, lngâ€.
               </p>
             </div>
           )}
 
           {!isError && results.length === 0 && !isFetching && (
             <div className="px-2.5 py-4 text-center">
-              <p className="text-[11px] text-ink-muted">No match for “{query}”</p>
+              <p className="text-[11px] text-ink-muted">No match for â€œ{query}â€</p>
               {helper && <p className="mt-1 text-[10px] text-ink-faint">{helper}</p>}
             </div>
           )}

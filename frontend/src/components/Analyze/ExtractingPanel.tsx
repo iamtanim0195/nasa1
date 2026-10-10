@@ -195,7 +195,7 @@ export function ExtractingPanel({ className }: ExtractingPanelProps) {
           </h3>
           <div className="mt-2.5">
             <MetricRow label="Feature count" value={sorted[0].featureCount} />
-            <MetricRow label="Area" value={sorted[0].areaKm2} unit="km²" />
+            <MetricRow label="Area" value={sorted[0].areaKm2} unit="km2" />
             <MetricRow
               label="Confidence"
               value={(sorted[0].confidence * 100).toFixed(1)}

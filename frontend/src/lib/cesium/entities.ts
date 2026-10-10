@@ -34,7 +34,7 @@ export interface PickHandlers {
 }
 
 /**
- * Own ScreenSpaceEventHandler Ã¢â‚¬" the Viewer's own handler drives its built-in
+ * Own ScreenSpaceEventHandler  the Viewer's own handler drives its built-in
  * picking, and we must not clobber it.
  */
 export function createPickHandler(
@@ -144,7 +144,7 @@ export function renderEventEntities(
 
     if (focused && showLabels) {
       base.label = {
-        text: `${event.id}  Ã‚·  ${detection.shortLabel}`,
+        text: `${event.id}    ${detection.shortLabel}`,
         font: '600 13px "Segoe UI", sans-serif',
         fillColor: cesium.Color.fromCssColorString('#EEF4FF'),
         outlineColor: cesium.Color.fromCssColorString('#02040A'),

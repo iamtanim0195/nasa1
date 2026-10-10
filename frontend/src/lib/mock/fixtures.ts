@@ -804,7 +804,7 @@ export function mockAnalysisWidgets(seedKey = 'widgets'): AnalysisWidget[] {
         {
           label: 'Affected area',
           value: Number((40 + rand() * 1_400).toFixed(1)),
-          unit: 'km²',
+          unit: 'km2',
           delta: Number(((rand() - 0.4) * 34).toFixed(1)),
         },
         {

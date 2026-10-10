@@ -41,7 +41,7 @@ function Sparkline({ widget }: { widget: AnalysisWidget }) {
             // Chrome comes from CSS (see "Recharts theming" in globals.css) so
             // this sparkline follows the theme like every other chart.
             wrapperClassName="em-chart-tooltip"
-            formatter={(value: number) => [value.toFixed(1), 'area km²']}
+            formatter={(value: number) => [value.toFixed(1), 'area km2']}
           />
           <Area
             type="monotone"

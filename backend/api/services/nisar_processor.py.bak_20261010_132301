@@ -7,7 +7,6 @@ This is the core backend that replaces SarDropzone.
 import earthaccess
 import numpy as np
 import h5py
-import json
 import os
 import glob
 import logging
@@ -90,47 +89,6 @@ os.makedirs(STATIC_FOLDER, exist_ok=True)
 
 # In-memory job status
 JOBS = {}
-
-# ============================================================
-# CACHE INDEX - Local storage tracking
-# ============================================================
-CACHE_INDEX_PATH = os.path.join(NISAR_DATA_FOLDER, "_cache_index.json")
-
-
-def load_cache_index():
-    """Load the local cache index of downloaded granules."""
-    if os.path.exists(CACHE_INDEX_PATH):
-        try:
-            with open(CACHE_INDEX_PATH, "r", encoding="utf-8") as f:
-                return json.load(f)
-        except Exception:
-            return {}
-    return {}
-
-
-def save_cache_index(index):
-    """Save the cache index."""
-    try:
-        with open(CACHE_INDEX_PATH, "w", encoding="utf-8") as f:
-            json.dump(index, f, indent=2)
-    except Exception as e:
-        print(f"[CACHE] Save failed: {e}")
-
-
-def is_cached(granule_id):
-    """Check if a granule is already downloaded."""
-    index = load_cache_index()
-    if granule_id not in index:
-        return False
-    return os.path.exists(index[granule_id])
-
-
-def cache_granule(granule_id, path):
-    """Record a downloaded granule in the cache index."""
-    index = load_cache_index()
-    index[granule_id] = path
-    save_cache_index(index)
-
 
 
 class AoiOutsideSceneError(ValueError):
@@ -330,7 +288,7 @@ def despeckle(mask, min_neighbours=2):
 
     Preferred over `binary_opening_3x3` for SAR change masks. Opening erodes
     with a FULL 3x3 kernel, so any pixel lacking all eight neighbours dies and
-    cannot be restored by the following dilation â€” on a sparse change mask that
+    cannot be restored by the following dilation — on a sparse change mask that
     erases the detection entirely. A neighbour-count filter removes lone pixels
     while preserving genuine small clusters.
     """
@@ -453,12 +411,12 @@ def _write_module_artifacts(module, before_data, after_data, mask, metadata, bac
 
         if ax_mask is not None:
             ax_mask.imshow(display_mask, cmap="inferno", interpolation="nearest")
-            ax_mask.set_title(f"detection mask â€” {int(display_mask.sum()):,} px",
+            ax_mask.set_title(f"detection mask — {int(display_mask.sum()):,} px",
                               fontsize=10, fontweight="bold")
             ax_mask.axis("off")
 
         fig.suptitle(
-            f"{module.title()} â€” {metadata.get('beforeDate')} to {metadata.get('afterDate')}",
+            f"{module.title()} — {metadata.get('beforeDate')} to {metadata.get('afterDate')}",
             fontsize=11, fontweight="bold",
         )
         fig.tight_layout()
@@ -522,7 +480,7 @@ def run_landslide_analysis(job_id, wkt, before_file_id, after_file_id):
     frac = (float(np.nanmean(slope[landslide_mask]))
             if slope is not None and landslide_pixels else None)
 
-    # Landslide area split by how steep the terrain is â€” a genuinely useful
+    # Landslide area split by how steep the terrain is — a genuinely useful
     # distribution and the series the frontend bar chart renders.
     slope_bands = []
     if slope is not None:
@@ -1377,7 +1335,7 @@ def extract_backscatter(file_path, wkt=None, crop_size=CROP_SIZE_DEFAULT):
 
     Passing `wkt` crops to a `crop_size` window centred on the AOI (peak memory
     ~350 MB). Omitting it reads the whole scene, which needs several GB and will
-    thrash on a normal machine â€” only do that deliberately.
+    thrash on a normal machine — only do that deliberately.
     """
     with h5py.File(file_path, "r") as f:
         x_all = f[BASE_PATH + "xCoordinates"][:]
@@ -1440,7 +1398,7 @@ def detect_flood(before_data, after_data, job_id):
     Flood detection by dual-polarisation backscatter drop.
 
     A pixel is flooded when BOTH HH and HV fall by more than
-    FLOOD_THRESHOLD_DB between the two acquisitions â€” the intersection is what
+    FLOOD_THRESHOLD_DB between the two acquisitions — the intersection is what
     suppresses false positives from surface roughness change alone.
     """
     delta_hh = after_data["hhhh_db"] - before_data["hhhh_db"]

@@ -130,7 +130,7 @@ function CategoryPie({ data }: { data: SeriesPoint[] }) {
           ))}
         </Pie>
         <Tooltip
-          content={<ChartTooltip unit=" km²" />}
+          content={<ChartTooltip unit=" km2" />}
           cursor={{ fill: 'rgba(39,201,255,0.06)' }}
         />
         <Legend
@@ -221,7 +221,7 @@ function TrendLine({ data }: { data: SeriesPoint[] }) {
         <CartesianGrid {...GRID_PROPS} />
         <XAxis dataKey="label" {...AXIS_PROPS} />
         <YAxis {...AXIS_PROPS} width={46} />
-        <Tooltip content={<ChartTooltip unit=" km²" />} />
+        <Tooltip content={<ChartTooltip unit=" km2" />} />
         <Legend
           verticalAlign="top"
           height={26}
@@ -380,7 +380,7 @@ export function ResultCharts({
       <div ref={containerRef} style={{ height }} className="w-full">
         {chartType === 'pie' && <CategoryPie data={dataset.categories} />}
         {chartType === 'bar' && (
-          <DistributionBar data={dataset.categories} tone="accent" unit=" km²" />
+          <DistributionBar data={dataset.categories} tone="accent" unit=" km2" />
         )}
         {chartType === 'histogram' && <ConfidenceHistogram data={dataset.confidenceBands} />}
         {chartType === 'line' && <TrendLine data={dataset.timeline} />}

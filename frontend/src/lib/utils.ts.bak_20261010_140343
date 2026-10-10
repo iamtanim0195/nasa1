@@ -1,0 +1,216 @@
+import { clsx, type ClassValue } from 'clsx';
+import { twMerge } from 'tailwind-merge';
+import type { BoundingBox, GeoPoint } from '@/types';
+
+/** Tailwind-aware class merger used by every component. */
+export function cn(...inputs: ClassValue[]): string {
+  return twMerge(clsx(inputs));
+}
+
+/* -------------------------------------------------------------------------- */
+/* Numbers & dates                                                             */
+/* -------------------------------------------------------------------------- */
+
+export function formatNumber(value: number, digits = 0): string {
+  return new Intl.NumberFormat('en-US', {
+    minimumFractionDigits: digits,
+    maximumFractionDigits: digits,
+  }).format(value);
+}
+
+export function formatCompact(value: number): string {
+  return new Intl.NumberFormat('en-US', { notation: 'compact', maximumFractionDigits: 1 }).format(
+    value,
+  );
+}
+
+export function formatArea(km2: number): string {
+  if (!Number.isFinite(km2)) return 'â€”';
+  if (km2 >= 10_000) return `${formatCompact(km2)} km2`;
+  if (km2 >= 100) return `${formatNumber(km2)} km2`;
+  return `${formatNumber(km2 1)} km2`;
+}
+
+export function formatBytes(bytes: number): string {
+  if (bytes <= 0) return '0 B';
+  const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+  const exp = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1);
+  const value = bytes / 1024 ** exp;
+  return `${value.toFixed(value >= 10 || exp === 0 ? 0 : 1)} ${units[exp]}`;
+}
+
+export function formatPercent(ratio: number, digits = 0): string {
+  return `${formatNumber(ratio * 100, digits)}%`;
+}
+
+export function formatCoordinate({ lat, lng }: GeoPoint, digits = 4): string {
+  const ns = lat >= 0 ? 'N' : 'S';
+  const ew = lng >= 0 ? 'E' : 'W';
+  return `${Math.abs(lat).toFixed(digits)}Â°${ns}, ${Math.abs(lng).toFixed(digits)}Â°${ew}`;
+}
+
+export function formatDateTime(iso: string): string {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return 'â€”';
+  return new Intl.DateTimeFormat('en-GB', {
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    timeZone: 'UTC',
+  }).format(date);
+}
+
+export function formatDate(iso: string | null | undefined): string {
+  if (!iso) return 'â€”';
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return 'â€”';
+  return new Intl.DateTimeFormat('en-GB', {
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+    timeZone: 'UTC',
+  }).format(date);
+}
+
+/** yyyy-MM-dd in UTC â€” the wire format used by every date param. */
+export function toIsoDate(date: Date): string {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const d = String(date.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+}
+
+export function daysBetween(from: string, to: string): number {
+  const a = Date.parse(`${from}T00:00:00Z`);
+  const b = Date.parse(`${to}T00:00:00Z`);
+  if (Number.isNaN(a) || Number.isNaN(b)) return 0;
+  return Math.round((b - a) / 86_400_000);
+}
+
+/* -------------------------------------------------------------------------- */
+/* Search parsing                                                              */
+/* -------------------------------------------------------------------------- */
+
+const COORD_PATTERN =
+  /^\s*(-?\d{1,3}(?:\.\d+)?)\s*Â°?\s*([NnSs])?\s*[, ]\s*(-?\d{1,3}(?:\.\d+)?)\s*Â°?\s*([EeWw])?\s*$/;
+
+/**
+ * Accepts "23.81, 90.41", "23.81N 90.41E", "23.81Â° N, 90.41Â° E".
+ * Returns null when the query is not a coordinate pair.
+ */
+export function parseCoordinates(query: string): GeoPoint | null {
+  const match = COORD_PATTERN.exec(query);
+  if (!match) return null;
+
+  let lat = Number.parseFloat(match[1] ?? '');
+  let lng = Number.parseFloat(match[3] ?? '');
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+
+  const latHem = (match[2] ?? '').toUpperCase();
+  const lngHem = (match[4] ?? '').toUpperCase();
+  if (latHem === 'S') lat = -Math.abs(lat);
+  if (lngHem === 'W') lng = -Math.abs(lng);
+
+  if (Math.abs(lat) > 90 || Math.abs(lng) > 180) return null;
+  return { lat, lng };
+}
+
+/* -------------------------------------------------------------------------- */
+/* Geo helpers                                                                 */
+/* -------------------------------------------------------------------------- */
+
+export function bboxCenter(bbox: BoundingBox): GeoPoint {
+  const [west, south, east, north] = bbox;
+  return { lat: (south + north) / 2, lng: (west + east) / 2 };
+}
+
+/** Metres of camera altitude that comfortably frames a bbox. */
+export function bboxAltitude(bbox: BoundingBox, padding = 1.2): number {
+  const [west, south, east, north] = bbox;
+  const span = Math.max(Math.abs(east - west), Math.abs(north - south));
+  // ~111 km per degree at the equator; converted to metres.
+  return Math.max(span * 111_000 * padding, 2_000);
+}
+
+export function clamp(value: number, min: number, max: number): number {
+  return Math.min(Math.max(value, min), max);
+}
+
+export function lerp(a: number, b: number, t: number): number {
+  return a + (b - a) * t;
+}
+
+/** Builds a rough closed ring around a point â€” used for mock event footprints. */
+export function ringAround(
+  { lat, lng }: GeoPoint,
+  radiusKm: number,
+  segments = 16,
+): Array<[number, number]> {
+  const ring: Array<[number, number]> = [];
+  const latDelta = radiusKm / 111;
+  const lngDelta = radiusKm / (111 * Math.max(Math.cos((lat * Math.PI) / 180), 0.15));
+
+  for (let i = 0; i < segments; i += 1) {
+    const theta = (i / segments) * Math.PI * 2;
+    const wobble = 0.75 + ((i * 37) % 11) / 22; // deterministic irregularity
+    ring.push([
+      lng + Math.cos(theta) * lngDelta * wobble,
+      lat + Math.sin(theta) * latDelta * wobble * 0.85,
+    ]);
+  }
+  ring.push(ring[0] as [number, number]);
+  return ring;
+}
+
+/* -------------------------------------------------------------------------- */
+/* Misc                                                                        */
+/* -------------------------------------------------------------------------- */
+
+export function truncate(value: string, max = 42): string {
+  return value.length > max ? `${value.slice(0, max - 1)}â€¦` : value;
+}
+
+export function uid(prefix = 'id'): string {
+  return `${prefix}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
+/** Stable pseudo-random generator so mock data does not flicker between renders. */
+export function seededRandom(seed: number): () => number {
+  let state = seed >>> 0 || 1;
+  return () => {
+    state = (state * 1664525 + 1013904223) >>> 0;
+    return state / 0xffffffff;
+  };
+}
+
+export function hashString(value: string): number {
+  let hash = 2166136261;
+  for (let i = 0; i < value.length; i += 1) {
+    hash ^= value.charCodeAt(i);
+    hash = Math.imul(hash, 16777619);
+  }
+  return hash >>> 0;
+}
+
+export function titleCase(value: string): string {
+  return value
+    .split(/[-_\s]+/)
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(' ');
+}
+
+/**
+ * Prefixes a `/public` asset with the deployment base path.
+ *
+ * `next/image` and plain `<img>`/`<link>` tags do NOT get `assetPrefix` applied
+ * to absolute paths, so sub-path deployments (GitHub Pages project sites) break
+ * without this. Every hard-coded asset reference in the app goes through here.
+ */
+export function assetPath(path: string): string {
+  const base = process.env.NEXT_PUBLIC_BASE_PATH ?? '';
+  const normalised = path.startsWith('/') ? path : `/${path}`;
+  return `${base}${normalised}`;
+}

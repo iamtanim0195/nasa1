@@ -1,5 +1,5 @@
-﻿'use client';
 // FE1 Update: 2026-10-06 16:12:45 by Fardin
+'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { AlertTriangle, RefreshCw } from 'lucide-react';
@@ -57,7 +57,7 @@ type Status = 'loading' | 'ready' | 'error';
  *
  * React owns the *container*; Cesium owns everything inside it. Props are
  * projected onto the scene through narrow effects so the viewer is created
- * exactly once and never rebuilt on a state change Â Â 'Â Â¬Â Ã…Â¡ rebuilding a WebGL context
+ * exactly once and never rebuilt on a state change ÃƒÆ’Ã†â€™Ãƒâ€ 'ÃƒÆ’"Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢"Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’"Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’"Å¡Ãƒâ€šÃ‚Â rebuilding a WebGL context
  * on every keystroke is the classic way to make a GIS dashboard stutter.
  */
 export function GlobeViewer({
@@ -68,7 +68,6 @@ export function GlobeViewer({
   activeLayer,
   autoRotate,
   comparisonActive,
-  floodMaskActive = false,
   modisActive = false,
   onSelectEvent,
   onHoverEvent,
@@ -167,7 +166,7 @@ export function GlobeViewer({
             enabled: liveController.enableZoom,
             minimumZoomDistance: liveController.minimumZoomDistance,
             maximumZoomDistance: liveController.maximumZoomDistance,
-            // 0 LEFT_DRAG Â Â 'Â  1 RIGHT_DRAG Â Â 'Â  2 MIDDLE_DRAG Â Â 'Â  3 WHEEL Â Â 'Â  4 PINCH
+            // 0 LEFT_DRAG ÃƒÆ’Ã†â€™Ãƒâ€ 'ÃƒÆ’Ã‚Â¢ÃƒÂ¢"Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’"Å¡Ãƒâ€šÂ· 1 RIGHT_DRAG ÃƒÆ’Ã†â€™Ãƒâ€ 'ÃƒÆ’Ã‚Â¢ÃƒÂ¢"Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’"Å¡Ãƒâ€šÂ· 2 MIDDLE_DRAG ÃƒÆ’Ã†â€™Ãƒâ€ 'ÃƒÆ’Ã‚Â¢ÃƒÂ¢"Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’"Å¡Ãƒâ€šÂ· 3 WHEEL ÃƒÆ’Ã†â€™Ãƒâ€ 'ÃƒÆ’Ã‚Â¢ÃƒÂ¢"Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’"Å¡Ãƒâ€šÂ· 4 PINCH
             eventTypes: liveController.zoomEventTypes,
             cameraHeightMetres: Math.round(
               // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -260,7 +259,7 @@ export function GlobeViewer({
     else autoRotateRef.current.stop();
   }, [autoRotate, status]);
 
-  // Real Flood Mask from /artifacts/  Auto-added
+  // Real Flood Mask from /artifacts/ — Auto-added
   useEffect(() => {
     if (!floodMaskActive) return;
     if (status !== 'ready' || !cesiumRef.current || !viewerRef.current) return;
@@ -280,7 +279,7 @@ export function GlobeViewer({
     try {
       const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL ?? 'http://localhost:8000';
       const provider = new cesium.SingleTileImageryProvider({
-        url: `${apiBase}/artifacts/feni/feni_flood_red_overlay.png`,
+        url: `${apiBase}/artifacts/feni/feni_flood_detection.png`,
         rectangle: cesium.Rectangle.fromDegrees(91.35, 22.95, 91.55, 23.15),
         tileWidth: 1024,
         tileHeight: 1024,
@@ -405,7 +404,7 @@ export function GlobeViewer({
                 Initialising globe
               </p>
               <p className="mt-1 text-[11px] text-ink-faint">
-                Loading the Cesium runtime and imagery pipelineÂ Â 'Â Â¬Â 
+                Loading the Cesium runtime and imagery pipelineÃƒÆ’Ã†â€™Ãƒâ€ 'ÃƒÆ’"Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢"Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’"Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’"Å¡Ãƒâ€šÃ‚Â¦
               </p>
             </div>
           </div>
@@ -424,7 +423,7 @@ export function GlobeViewer({
               {failure}
             </p>
             <p className="mt-2 text-[10px] text-ink-faint">
-              The rest of the console stays usable Â Â 'Â Â¬Â Ã…Â¡ panels, filters and analysis all work without
+              The rest of the console stays usable ÃƒÆ’Ã†â€™Ãƒâ€ 'ÃƒÆ’"Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢"Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’"Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’"Å¡Ãƒâ€šÃ‚Â panels, filters and analysis all work without
               the 3D view.
             </p>
             <Button

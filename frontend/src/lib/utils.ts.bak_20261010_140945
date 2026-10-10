@@ -99,26 +99,6 @@ export function assetPath(path: string): string {
 }
 
 /* ==========================================================================
-   STRING / HASH HELPERS  (used by mock/fixtures.ts)
-   ========================================================================== */
-export function hashString(str: string): number {
-  let hash = 2166136261;
-  for (let i = 0; i < str.length; i += 1) {
-    hash ^= str.charCodeAt(i);
-    hash = Math.imul(hash, 16777619);
-  }
-  return hash >>> 0;
-}
-
-export function seededRandom(seed: number): () => number {
-  let state = seed >>> 0;
-  return () => {
-    state = (state * 1664525 + 1013904223) >>> 0;
-    return state / 0x100000000;
-  };
-}
-
-/* ==========================================================================
    MISC HELPERS
    ========================================================================== */
 export function clamp(value: number, min: number, max: number): number {
@@ -127,66 +107,4 @@ export function clamp(value: number, min: number, max: number): number {
 
 export function uid(prefix = 'id'): string {
   return `${prefix}-${Math.random().toString(36).substring(2, 10)}`;
-}
-
-export function truncate(str: string, length = 40): string {
-  if (!str) return '';
-  return str.length > length ? `${str.slice(0, length)}...` : str;
-}
-
-export function debounce<T extends (...args: never[]) => void>(
-  fn: T,
-  wait = 300,
-): (...args: Parameters<T>) => void {
-  let timeout: ReturnType<typeof setTimeout> | null = null;
-  return (...args: Parameters<T>) => {
-    if (timeout) clearTimeout(timeout);
-    timeout = setTimeout(() => fn(...args), wait);
-  };
-}
-/* ============================================================
-   ADDITIONAL HELPERS - Auto-added
-   ============================================================ */
-
-export function ringAround(
-  center: { lat: number; lng: number },
-  radiusDeg: number,
-  points = 12,
-): Array<[number, number]> {
-  const ring: Array<[number, number]> = [];
-  for (let i = 0; i <= points; i += 1) {
-    const angle = (i / points) * Math.PI * 2;
-    const lat = center.lat + Math.sin(angle) * radiusDeg;
-    const lng = center.lng + Math.cos(angle) * radiusDeg * 1.1;
-    ring.push([lng, lat]);
-  }
-  return ring;
-}
-
-export function parseCoordinates(input: string): { lat: number; lng: number } | null {
-  if (!input) return null;
-  const match = input.match(/^(-?\d+\.?\d*)[,\s]+(-?\d+\.?\d*)$/);
-  if (!match) return null;
-  const lat = parseFloat(match[1]);
-  const lng = parseFloat(match[2]);
-  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
-  if (Math.abs(lat) > 90 || Math.abs(lng) > 180) return null;
-  return { lat, lng };
-}
-
-export function daysBetween(a: string | Date, b: string | Date): number {
-  const d1 = typeof a === 'string' ? new Date(a) : a;
-  const d2 = typeof b === 'string' ? new Date(b) : b;
-  return Math.round((d2.getTime() - d1.getTime()) / 86_400_000);
-}
-
-export function formatDate(iso: string, opts?: Intl.DateTimeFormatOptions): string {
-  if (!iso) return '';
-  try {
-    const d = new Date(iso);
-    if (Number.isNaN(d.getTime())) return iso;
-    return d.toLocaleDateString('en-US', opts ?? { year: 'numeric', month: 'short', day: 'numeric' });
-  } catch {
-    return iso;
-  }
 }

@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { Layers, Radar, SlidersHorizontal, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -22,7 +22,6 @@ export interface SidebarProps {
   onLocationChange?: (location: GeoLocation) => void;
   onDetectionTypeSelect?: (type: DetectionType) => void;
   onDateRangeChange?: (range: DateRange) => void;
-  onSarDataUpload?: (file: File) => void;
   onRunAnalysis?: () => void;
   onEventSelect?: (event: DetectedEvent) => void;
 }
@@ -31,7 +30,7 @@ export interface SidebarProps {
  * Left mission rail.
  *
  * Three collapsible panels in a fixed order that mirrors the operator's
- * workflow: what am I looking at (LAYERS) → what am I computing (CONTROL) →
+ * workflow: what am I looking at (LAYERS) â†’ what am I computing (CONTROL) â†’
  * what did it find (EVENTS).
  */
 export function Sidebar({
@@ -42,7 +41,6 @@ export function Sidebar({
   onLocationChange,
   onDetectionTypeSelect,
   onDateRangeChange,
-  onSarDataUpload,
   onRunAnalysis,
   onEventSelect,
 }: SidebarProps) {
@@ -94,7 +92,7 @@ export function Sidebar({
         {/* Branding */}
         <BrandingCard />
 
-        {/* PANEL 1 — LAYERS */}
+        {/* PANEL 1 â€” LAYERS */}
         <CollapsiblePanel
           panelId="layers"
           title="Layers"
@@ -106,7 +104,7 @@ export function Sidebar({
           <LayersPanel activeLayer={activeLayer} onLayerChange={handleLayer} />
         </CollapsiblePanel>
 
-        {/* PANEL 2 — CONTROL PANEL */}
+        {/* PANEL 2 â€” CONTROL PANEL */}
         <CollapsiblePanel
           panelId="control"
           title="Control Panel"
@@ -119,12 +117,11 @@ export function Sidebar({
             onLocationChange={onLocationChange}
             onDetectionTypeSelect={onDetectionTypeSelect}
             onDateRangeChange={onDateRangeChange}
-            onSarDataUpload={onSarDataUpload}
             onRunAnalysis={onRunAnalysis}
           />
         </CollapsiblePanel>
 
-        {/* PANEL 3 — EVENTS */}
+        {/* PANEL 3 â€” EVENTS */}
         <CollapsiblePanel
           panelId="events"
           title="Events"

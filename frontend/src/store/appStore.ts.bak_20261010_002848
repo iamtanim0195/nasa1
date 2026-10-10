@@ -35,7 +35,6 @@ export interface AppState {
   /** Visual theme. Mirrored onto `<html class>` by the actions below. */
   theme: Theme;
   autoRotate: boolean;
-  showEvents: boolean;
   globeReady: boolean;
   globeError: string | null;
 
@@ -76,7 +75,6 @@ export interface AppState {
   setActiveLayer: (layer: LayerType) => void;
   toggleAutoRotate: () => void;
   setAutoRotate: (enabled: boolean) => void;
-  setShowEvents: (show: boolean) => void;
 
   /* ---- actions: appearance ---- */
   setTheme: (theme: Theme) => void;
@@ -146,7 +144,6 @@ const INITIAL = {
   // reaches it. Hovering suspends the spin without touching this flag, so the
   // header play/pause button is the only thing that owns this value.
   autoRotate: false,
-  showEvents: false,
   globeReady: false,
   globeError: null,
 
@@ -193,7 +190,6 @@ export const useAppStore = create<AppState>()((set) => ({
   setActiveLayer: (layer) => set({ activeLayer: layer }),
   toggleAutoRotate: () => set((state) => ({ autoRotate: !state.autoRotate })),
   setAutoRotate: (enabled) => set({ autoRotate: enabled }),
-  setShowEvents: (show) => set({ showEvents: show }),
 
   /* ---- appearance ---- */
   // Applying the theme is part of the action, not an effect in a component: the
@@ -304,7 +300,7 @@ export const useAppStore = create<AppState>()((set) => ({
  * Client-side mirror of the server filter.
  *
  * The backend remains authoritative, but this is applied on top of the response
- * so the list stays correct even against a backend that ignores a filter param 
+ * so the list stays correct even against a backend that ignores a filter param Ã¢â‚¬"
  * and it keeps typing in the EVENTS search box instant while a refetch is in
  * flight.
  */

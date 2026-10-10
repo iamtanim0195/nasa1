@@ -78,7 +78,7 @@ function AnalyzeContent() {
                   <>
                     {selectedLocation.name} ·{' '}
                     <span className="telemetry">
-                      {dateRange.before ?? '"”'} â†’ {dateRange.after ?? '"”'}
+                      {dateRange.before ?? '"”'}  {dateRange.after ?? '"”'}
                     </span>
                   </>
                 ) : (

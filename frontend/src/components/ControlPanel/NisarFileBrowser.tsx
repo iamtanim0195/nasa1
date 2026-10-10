@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useMemo, useState } from 'react';
 import { Calendar, Database, Download, Filter, Layers, Play, Sparkles, X } from 'lucide-react';
@@ -171,7 +171,7 @@ export function NisarFileBrowser({
                 {selectedBeforeFile?.date}
               </p>
               <p className="text-[9px] text-ink-faint">
-                Track {selectedBeforeFile?.track} ÃƒÆ’"Å¡Ãƒâ€š| Frame {selectedBeforeFile?.frame}
+                Track {selectedBeforeFile?.track}  Frame {selectedBeforeFile?.frame}
               </p>
             </div>
             <div className="rounded-lg border border-hairline/10 bg-elevate/5 p-2">
@@ -180,7 +180,7 @@ export function NisarFileBrowser({
                 {selectedAfterFile?.date}
               </p>
               <p className="text-[9px] text-ink-faint">
-                Track {selectedAfterFile?.track} ÃƒÆ’"Å¡Ãƒâ€š| Frame {selectedAfterFile?.frame}
+                Track {selectedAfterFile?.track}  Frame {selectedAfterFile?.frame}
               </p>
             </div>
           </div>
@@ -197,7 +197,7 @@ export function NisarFileBrowser({
             <div className="mb-1.5 flex items-center gap-2 px-1">
               <Icon name="Layers" className="h-3 w-3 text-ink-faint" />
               <p className="text-[10px] font-semibold text-ink-muted">
-                Track {group.track} ÃƒÆ’"Å¡Ãƒâ€š| Frame {group.frame}
+                Track {group.track}  Frame {group.frame}
               </p>
               <span className="rounded border border-hairline/10 bg-elevate/5 px-1.5 py-0.5 text-[9px] text-ink-faint">
                 {group.files.length} date{group.files.length !== 1 ? 's' : ''}
@@ -229,7 +229,7 @@ export function NisarFileBrowser({
                           {file.date}
                         </p>
                         <p className="text-[9px] text-ink-faint">
-                          {file.time} ÃƒÆ’"Å¡Ãƒâ€š| {file.orbit} ÃƒÆ’"Å¡Ãƒâ€š|{' '}
+                          {file.time}  {file.orbit}
                           <span className={isSmall ? 'text-signal-low' : 'text-signal-medium'}>
                             {file.sizeGB.toFixed(2)} GB
                           </span>

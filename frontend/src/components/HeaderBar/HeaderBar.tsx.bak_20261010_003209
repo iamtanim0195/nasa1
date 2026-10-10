@@ -2,21 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import {
-  Activity,
-  Eye,
-  EyeOff,
-  Gauge,
-  Globe2,
-  Menu,
-  Moon,
-  Pause,
-  Play,
-  Radio,
-  Satellite,
-  Sun,
-  Wifi,
-} from 'lucide-react';
+import { Eye, EyeOff, Play, Pause } from 'lucide-react';
 import { cn, formatCompact, formatPercent } from '@/lib/utils';
 import { useAppStore } from '@/store/appStore';
 import { useMissionSummary } from '@/hooks/useMissionSummary';
@@ -37,6 +23,13 @@ const NAV = [
   { href: '/results', label: 'Results', icon: Gauge },
 ];
 
+/**
+ * Mission status bar.
+ *
+ * Persistent across all routes so the operator never loses sight of whether the
+ * feed is live, how much area is under monitoring, and how far the current job
+ * has progressed.
+ */
 export function HeaderBar({ onToggleSidebar, sidebarOpen, className }: HeaderBarProps) {
   const pathname = usePathname();
   const autoRotate = useAppStore((state) => state.autoRotate);
@@ -86,130 +79,133 @@ export function HeaderBar({ onToggleSidebar, sidebarOpen, className }: HeaderBar
         </div>
       </div>
 
-      {/* Metrics (desktop) */}
+      {/* Telemetry strip */}
       <div className="ml-2 hidden items-center gap-2 xl:flex">
         <Metric
           icon={<Radio className="h-3 w-3" />}
           label="Active events"
-          value={summary ? formatCompact(summary.activeEvents) : '-'}
+          value={summary ? formatCompact(summary.activeEvents) : 'â€”'}
           loading={isLoading}
         />
         <Metric
           icon={<Globe2 className="h-3 w-3" />}
           label="Monitored"
-          value={summary ? `${formatCompact(summary.monitoredAreaKm2)} km2` : '-'}
+          value={summary ? `${formatCompact(summary.monitoredAreaKm2)} kmÂ²` : 'â€”'}
           loading={isLoading}
         />
         <Metric
           icon={<Activity className="h-3 w-3" />}
           label="Scenes"
-          value={summary ? formatCompact(summary.scenesIngested) : '-'}
+          value={summary ? formatCompact(summary.scenesIngested) : 'â€”'}
           loading={isLoading}
         />
         <Metric
-          icon={<Wifi className="h-3 w-3" />}
+          icon={<Gauge className="h-3 w-3" />}
           label="Uptime"
-          value={summary ? formatPercent(summary.uptimeRatio) : '-'}
+          value={summary ? formatPercent(summary.uptimeRatio, 2) : 'â€”'}
           loading={isLoading}
         />
       </div>
 
-      {/* Right side */}
+      {/* Right cluster */}
       <div className="ml-auto flex items-center gap-2">
-        {/* Nav */}
+        {/* Route nav */}
         <nav className="flex items-center gap-1" aria-label="Sections">
           {NAV.map((item) => {
+            const Icon = item.icon;
             const active = pathname === item.href;
-            const IconComponent = item.icon;
             return (
               <Link
                 key={item.href}
                 href={item.href}
+                aria-current={active ? 'page' : undefined}
                 className={cn(
-                  'flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[11px] font-semibold transition-colors',
+                  'flex items-center gap-1.5 rounded-lg px-2 py-1.5 text-[11px] font-medium transition-colors',
                   active
-                    ? 'bg-accent/10 text-accent'
+                    ? 'bg-accent/12 text-accent'
                     : 'text-ink-muted hover:bg-elevate/6 hover:text-ink',
                 )}
               >
-                <IconComponent className="h-3.5 w-3.5" />
+                <Icon className="h-3.5 w-3.5" />
                 <span className="hidden lg:inline">{item.label}</span>
               </Link>
             );
           })}
         </nav>
 
-        {/* Status badge */}
         <Badge
           tone={status === 'online' ? 'success' : status === 'degraded' ? 'warning' : 'danger'}
+          dot
         >
-          {status === 'online' ? 'Feed live' : status === 'degraded' ? 'Loading' : 'Offline'}
+          {status === 'online' ? 'Feed live' : status === 'degraded' ? 'Syncing' : 'Offline'}
         </Badge>
 
-        {/* Event markers toggle */}
+        {/* Auto-rotation. On by default; hovering the globe suspends the spin
+            without touching this flag â€” see src/lib/cesium/rotation.ts. */}
         <Button
           size="icon"
-          variant="ghost"
-          aria-label={showEvents ? 'Hide event markers' : 'Show event markers'}
-          aria-pressed={showEvents}
-          title={showEvents ? 'Hide events' : 'Show events'}
-          onClick={() => setShowEvents(!showEvents)}
-          icon={showEvents ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}
-          className={showEvents ? 'text-accent' : 'text-ink-muted'}
-        />
-
-        {/* Auto-rotate toggle */}
-        <Button
-          size="icon"
-          variant="ghost"
-          aria-label={autoRotate ? 'Pause rotation' : 'Start rotation'}
-          aria-pressed={autoRotate}
+          variant={autoRotate ? 'outline' : 'ghost'}
           onClick={toggleAutoRotate}
-          icon={autoRotate ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
-          className={autoRotate ? 'text-accent' : 'text-ink-muted'}
+          aria-pressed={autoRotate}
+          aria-label={autoRotate ? 'Stop globe auto-rotation' : 'Start globe auto-rotation'}
+          title={
+            autoRotate ? 'Auto-rotation: on â€” dragging or zooming stops it' : 'Auto-rotation: off'
+          }
+          icon={
+            autoRotate ? (
+              <Pause className="h-3.5 w-3.5 text-accent" />
+            ) : (
+              <Play className="h-3.5 w-3.5" />
+            )
+          }
         />
 
-        {/* Theme toggle */}
+        {/* Theme. The icon shows the theme you would switch *to*, not the one you
+            are in â€” the usual convention, and it removes the guesswork. */}
         <Button
           size="icon"
-          variant="ghost"
-          aria-label={isDark ? 'Light mode' : 'Dark mode'}
+          variant={isDark ? 'ghost' : 'outline'}
           onClick={toggleTheme}
-          icon={isDark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+          aria-pressed={!isDark}
+          aria-label={isDark ? 'Switch to light theme' : 'Switch to dark theme'}
+          title={isDark ? 'Light theme' : 'Dark theme'}
+          icon={isDark ? <Sun className="h-3.5 w-3.5" /> : <Moon className="h-3.5 w-3.5" />}
         />
 
-        {/* Analyze dropdown */}
+        {/* ANALYSIS MENU */}
         <AnalysisDropdown />
       </div>
     </header>
   );
 }
 
-/* ==================================================================== */
-/* Metric sub-component                                                  */
-/* ==================================================================== */
-interface MetricProps {
+/* -------------------------------------------------------------------------- */
+/* Metric chip                                                                */
+/* -------------------------------------------------------------------------- */
+
+function Metric({
+  icon,
+  label,
+  value,
+  loading,
+}: {
   icon: React.ReactNode;
   label: string;
   value: string;
   loading?: boolean;
-}
-
-function Metric({ icon, label, value, loading }: MetricProps) {
+}) {
   return (
     <div className="flex items-center gap-2 rounded-lg border border-hairline/8 bg-elevate/4 px-2.5 py-1.5">
+      <span className="text-ink-faint">{icon}</span>
       <div className="leading-none">
-        <div className="flex items-center gap-1 text-[9px] font-semibold uppercase tracking-wider text-ink-faint">
-          {icon}
-          <span>{label}</span>
-        </div>
+        <p className="text-[8.5px] uppercase tracking-wider text-ink-faint">{label}</p>
         <p
           className={cn(
-            'mt-1 text-[13px] font-bold leading-none',
-            loading ? 'text-ink-faint' : 'text-ink',
+            'telemetry mt-0.5 text-[11px] font-semibold text-ink',
+            loading && 'animate-pulse text-ink-faint',
           )}
         >
-          {loading ? '...' : value}
+          {value}
         </p>
       </div>
     </div>

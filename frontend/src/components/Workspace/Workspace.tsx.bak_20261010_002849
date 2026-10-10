@@ -51,7 +51,6 @@ export function Workspace({ className }: WorkspaceProps) {
   /* ---- store ---- */
   const activeLayer = useAppStore((state) => state.activeLayer);
   const autoRotate = useAppStore((state) => state.autoRotate);
-  const showEvents = useAppStore((state) => state.showEvents);
   const selectedLocation = useAppStore((state) => state.selectedLocation);
   const events = useAppStore((state) => state.events);
   const selectedEventId = useAppStore((state) => state.selectedEventId);
@@ -178,7 +177,7 @@ export function Workspace({ className }: WorkspaceProps) {
 
         <main className="relative min-h-0 flex-1">
           <GlobeViewer
-            events={showEvents ? events : []}
+            events={events}
             selectedEventId={selectedEventId}
             hoveredEventId={hoveredEventId}
             selectedLocation={selectedLocation}
@@ -361,7 +360,7 @@ export function Workspace({ className }: WorkspaceProps) {
               className="absolute bottom-4 right-4 z-chrome flex items-center gap-2 rounded-xl border border-accent/35 bg-space-950/85 px-3 py-2 text-[10.5px] text-accent backdrop-blur-md transition-colors hover:bg-accent/12"
             >
               <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-accent" />
-              Analysis running  view pipeline
+              Analysis running Ã¢â‚¬" view pipeline
             </button>
           )}
 
@@ -372,7 +371,7 @@ export function Workspace({ className }: WorkspaceProps) {
                 onClick={() => void refetch()}
                 className="pointer-events-auto rounded-lg border border-signal-medium/35 bg-space-950/85 px-3 py-1.5 text-[10px] text-signal-medium backdrop-blur-md"
               >
-                Globe offline  panels and analysis remain available
+                Globe offline Ã¢â‚¬" panels and analysis remain available
               </button>
             </div>
           )}

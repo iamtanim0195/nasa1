@@ -369,32 +369,3 @@ async def get_widgets(request: Request, job_id: str):
     ]
 
     return envelope(data, request_id=request_id)
-
-# ============================================================
-# CACHE STATUS ENDPOINT — Auto-added
-# ============================================================
-@router.get("/cache-status/{granule_id}")
-async def cache_status(request: Request, granule_id: str):
-    """Check if a granule is already cached locally."""
-    from api.services.nisar_processor import is_cached, load_cache_index
-    request_id = request.headers.get("x-request-id")
-    cached = is_cached(granule_id)
-    index = load_cache_index()
-    return envelope({
-        "granuleId": granule_id,
-        "cached": cached,
-        "path": index.get(granule_id) if cached else None,
-        "totalCached": len(index),
-    }, request_id=request_id)
-
-
-@router.get("/cache-list")
-async def cache_list(request: Request):
-    """List all cached granules."""
-    from api.services.nisar_processor import load_cache_index
-    request_id = request.headers.get("x-request-id")
-    index = load_cache_index()
-    return envelope({
-        "count": len(index),
-        "granules": list(index.keys()),
-    }, request_id=request_id)

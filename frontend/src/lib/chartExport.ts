@@ -35,7 +35,7 @@ export async function exportElementAsPng(
   clone.style.fontFamily = getComputedStyle(svg).fontFamily || 'Segoe UI, sans-serif';
 
   const serialised = new XMLSerializer().serializeToString(clone);
-  // encodeURIComponent keeps non-ASCII labels (km², —) intact without btoa.
+  // encodeURIComponent keeps non-ASCII labels (km2 —) intact without btoa.
   const dataUrl = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(serialised)}`;
 
   try {

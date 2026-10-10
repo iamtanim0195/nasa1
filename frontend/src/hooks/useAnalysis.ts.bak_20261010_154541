@@ -1,4 +1,4 @@
-﻿'use client';
+'use client';
 
 import { useEffect, useMemo } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -32,7 +32,7 @@ export interface StageState {
 export const STAGE_META: Record<AnalysisStage, { label: string; description: string }> = {
   dsard: {
     label: 'D-SAR-D',
-    description: 'Deterministic SAR Difference â€” ingest, calibrate, coregister, threshold.',
+    description: 'Deterministic SAR Difference — ingest, calibrate, coregister, threshold.',
   },
   extracting: {
     label: 'Extracting',
@@ -71,7 +71,7 @@ export interface UseAnalysisResult {
  *
  * The stored payload is UNTRUSTED: it may have been written by an older build
  * with a different field set. `DsardPanel` reads `job.steps.length`, so a job
- * without `steps` throws and blanks the whole panel â€” a stale entry from a
+ * without `steps` throws and blanks the whole panel — a stale entry from a
  * previous session must degrade to "no job", never to a crash.
  */
 function isRestorableJob(value: unknown): value is AnalysisJob {
@@ -164,19 +164,7 @@ const startMutation = useMutation({
     queryKey: ['analysis', 'job', jobId],
     queryFn: () => fetchAnalysisJob(jobId ?? ''),
     enabled: Boolean(jobId),
-    retry: (failureCount, error) => {
-      // 404 = job no longer exists on the backend (e.g. server restarted).
-      // Discard local state so we stop polling a phantom job.
-      const status = (error as { response?: { status?: number } })?.response?.status;
-      if (status === 404) {
-        localStorage.removeItem('activeJobId');
-        localStorage.removeItem('activeJobData');
-        return false;
-      }
-      return failureCount < 2;
-    },
     refetchInterval: (query) => {
-      if (query.state.error) return false;
       const snapshot = query.state.data?.data;
       if (!snapshot) return 1_200;
       return snapshot.progress >= 100 ? false : 1_200;

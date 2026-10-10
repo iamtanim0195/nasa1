@@ -1,5 +1,5 @@
-﻿/**
- * EARTH-METAMORPHOSIS â€” domain model
+/**
+ * EARTH-METAMORPHOSIS — domain model
  *
  * These types are the contract between the UI and the (future) backend.
  * Every shape here is deliberately transport-agnostic: swap the mock
@@ -29,7 +29,6 @@ export interface GeoLocation extends GeoPoint {
   /** Camera altitude in metres used when flying the globe here. */
   altitude?: number;
   source: LocationSource;
-  detectionType?: DetectionType;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -169,7 +168,7 @@ export interface Metric {
   label: string;
   value: number | string;
   unit?: string;
-  /** Signed delta versus the reference window; renders as â–²/â–¼. */
+  /** Signed delta versus the reference window; renders as ▲/▼. */
   delta?: number;
 }
 
