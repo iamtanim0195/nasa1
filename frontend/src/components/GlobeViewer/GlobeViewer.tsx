@@ -1,4 +1,4 @@
-﻿'use client';
+'use client';
 // FE1 Update: 2026-10-06 16:12:45 by Fardin
 
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -9,6 +9,7 @@ import {
   createAutoRotate,
   createDoubleClickZoom,
   createPickHandler,
+  createRectangleDrawer,
   createViewer,
   DEFAULT_ROTATION_SPEED,
   destroyViewer,
@@ -28,6 +29,7 @@ import { clamp, cn } from '@/lib/utils';
 import { Button } from '@/components/ui/Button';
 import type { DetectedEvent, GeoLocation, LayerType } from '@/types';
 import { GlobeTelemetry } from './GlobeTelemetry';
+import { useAppStore } from '@/store/appStore';
 
 export interface GlobeViewerProps {
   events: DetectedEvent[];
@@ -41,6 +43,8 @@ export interface GlobeViewerProps {
   floodMaskActive?: boolean;
   /** NASA GIBS MODIS true-colour overlay (live tiles from EOSDIS GIBS). */
   modisActive?: boolean;
+  /** Dynamic overlay URL -- comes from the active job's real artifacts. */
+  overlayUrl?: string | null;
   onSelectEvent?: (eventId: string | null) => void;
   onHoverEvent?: (eventId: string | null) => void;
   onReady?: () => void;
@@ -57,7 +61,7 @@ type Status = 'loading' | 'ready' | 'error';
  *
  * React owns the *container*; Cesium owns everything inside it. Props are
  * projected onto the scene through narrow effects so the viewer is created
- * exactly once and never rebuilt on a state change Â Â 'Â Â¬Â Ã…Â¡ rebuilding a WebGL context
+ * exactly once and never rebuilt on a state change ''... rebuilding a WebGL context
  * on every keystroke is the classic way to make a GIS dashboard stutter.
  */
 export function GlobeViewer({
@@ -70,6 +74,7 @@ export function GlobeViewer({
   comparisonActive,
   floodMaskActive = false,
   modisActive = false,
+  overlayUrl = null,
   onSelectEvent,
   onHoverEvent,
   onReady,
@@ -90,6 +95,9 @@ export function GlobeViewer({
   const [attempt, setAttempt] = useState(0);
   // Passed to the telemetry HUD once the viewer exists.
   const [viewerHandle, setViewerHandle] = useState<unknown>(null);
+  // Draw-rectangle AOI tool.
+  const [drawMode, setDrawMode] = useState(false);
+  const disposeDrawRef = useRef<(() => void) | null>(null);
 
   // Callbacks are read through a ref so prop identity changes never remount the
   // viewer.
@@ -167,7 +175,7 @@ export function GlobeViewer({
             enabled: liveController.enableZoom,
             minimumZoomDistance: liveController.minimumZoomDistance,
             maximumZoomDistance: liveController.maximumZoomDistance,
-            // 0 LEFT_DRAG Â Â 'Â  1 RIGHT_DRAG Â Â 'Â  2 MIDDLE_DRAG Â Â 'Â  3 WHEEL Â Â 'Â  4 PINCH
+            // 0 LEFT_DRAG ' 1 RIGHT_DRAG ' 2 MIDDLE_DRAG ' 3 WHEEL ' 4 PINCH
             eventTypes: liveController.zoomEventTypes,
             cameraHeightMetres: Math.round(
               // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -262,7 +270,7 @@ export function GlobeViewer({
 
   // Real Flood Mask from /artifacts/  Auto-added
   useEffect(() => {
-    if (!floodMaskActive) return;
+    if (!floodMaskActive || !overlayUrl) return;
     if (status !== 'ready' || !cesiumRef.current || !viewerRef.current) return;
 
     const cesium = cesiumRef.current;
@@ -279,9 +287,32 @@ export function GlobeViewer({
 
     try {
       const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL ?? 'http://localhost:8000';
+
+      // Derive the bbox from the store: custom drawn area wins, then
+      // the selected location's bbox, then a sane fallback.
+      // Priority: the location the user explicitly selected (persisted
+      // via selectLocation after "Use this area") wins; then any live
+      // drawnBbox; then the Feni fallback for cold boots.
+      const store = useAppStore.getState();
+      console.log('=== [DEBUG GlobeViewer overlay effect] ===');
+      console.log('  selectedLocation prop:', selectedLocation);
+      console.log('  selectedLocation?.bbox:', selectedLocation?.bbox);
+      console.log('  store.selectedLocation:', store.selectedLocation);
+      console.log('  store.selectedLocation?.bbox:', store.selectedLocation?.bbox);
+      console.log('  store.drawnBbox:', store.drawnBbox);
+      console.log('  overlayUrl:', overlayUrl);
+      const selectedBbox = selectedLocation?.bbox as
+        | [number, number, number, number]
+        | undefined;
+      const activeBbox =
+        selectedBbox ??
+        store.drawnBbox ??
+        [91.35, 22.95, 91.55, 23.15];
+      const [west, south, east, north] = activeBbox;
+
       const provider = new cesium.SingleTileImageryProvider({
-        url: `${apiBase}/artifacts/feni/feni_flood_red_overlay.png`,
-        rectangle: cesium.Rectangle.fromDegrees(91.35, 22.95, 91.55, 23.15),
+        url: `${apiBase}${overlayUrl.replace("_preview", "_overlay")}`,
+        rectangle: cesium.Rectangle.fromDegrees(west, south, east, north),
         tileWidth: 1024,
         tileHeight: 1024,
       });
@@ -291,15 +322,36 @@ export function GlobeViewer({
       layers.add(layer);
 
       viewer.camera.flyTo({
-        destination: cesium.Rectangle.fromDegrees(91.35, 22.95, 91.55, 23.15),
+        destination: cesium.Rectangle.fromDegrees(west, south, east, north),
         duration: 2.5,
       });
 
-      console.info('[globe] Real flood mask layer added');
+      console.info('[globe] Real flood mask layer added', { bbox: activeBbox });
     } catch (error) {
       console.warn('[globe] Real flood mask add failed:', error);
     }
-  }, [floodMaskActive, status]);
+  }, [floodMaskActive, status, overlayUrl, selectedLocation]);
+
+  // Rectangle draw tool -- active only while drawMode is true.
+  useEffect(() => {
+    if (status !== 'ready' || !cesiumRef.current || !viewerRef.current) return;
+    if (!drawMode) return;
+
+    const cesium = cesiumRef.current;
+    const viewer = viewerRef.current;
+
+    disposeDrawRef.current = createRectangleDrawer(cesium, viewer, {
+      onComplete: (bbox) => {
+        useAppStore.getState().setDrawnBbox(bbox);
+        setDrawMode(false);
+      },
+    });
+
+    return () => {
+      disposeDrawRef.current?.();
+      disposeDrawRef.current = null;
+    };
+  }, [drawMode, status]);
 
 
   /* ------------------------------------------------------------------ */
@@ -388,6 +440,23 @@ export function GlobeViewer({
           Themed in CSS, because in light mode a heavy dark vignette looks wrong. */}
       <div className="globe-vignette pointer-events-none absolute inset-0" />
       <div className="pointer-events-none absolute inset-x-0 top-0 h-28 bg-gradient-to-b from-space-950/85 to-transparent" />
+
+      {/* Draw-AOI toggle */}
+      {status === 'ready' && (
+        <button
+          type="button"
+          onClick={() => setDrawMode((value) => !value)}
+          className={cn(
+            'absolute right-4 top-4 z-chrome rounded-lg border px-3 py-2 text-[11px] font-semibold backdrop-blur transition-colors',
+            drawMode
+              ? 'border-accent bg-accent/25 text-accent shadow-glow-accent'
+              : 'border-hairline/25 bg-space-900/75 text-ink-muted hover:border-accent/40 hover:text-ink',
+          )}
+          title="Drag on the globe to define a custom area of interest"
+        >
+          {drawMode ? 'X Cancel Draw' : 'Draw AOI'}
+        </button>
+      )}
       <div className="pointer-events-none absolute inset-x-0 bottom-0 h-28 bg-gradient-to-t from-space-950/80 to-transparent" />
 
       {/* Loading */}
@@ -405,7 +474,7 @@ export function GlobeViewer({
                 Initialising globe
               </p>
               <p className="mt-1 text-[11px] text-ink-faint">
-                Loading the Cesium runtime and imagery pipelineÂ Â 'Â Â¬Â 
+                Loading the Cesium runtime and imagery pipeline'
               </p>
             </div>
           </div>
@@ -424,7 +493,7 @@ export function GlobeViewer({
               {failure}
             </p>
             <p className="mt-2 text-[10px] text-ink-faint">
-              The rest of the console stays usable Â Â 'Â Â¬Â Ã…Â¡ panels, filters and analysis all work without
+              The rest of the console stays usable ''... panels, filters and analysis all work without
               the 3D view.
             </p>
             <Button

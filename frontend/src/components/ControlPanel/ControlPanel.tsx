@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useCallback, useEffect, useMemo } from 'react';
 import { Crosshair, Play, Target } from 'lucide-react';
@@ -37,6 +37,8 @@ export function ControlPanel({
   const setDetectionType = useAppStore((state) => state.setDetectionType);
   const setDateRange = useAppStore((state) => state.setDateRange);
   const selectLocation = useAppStore((state) => state.selectLocation);
+  const drawnBbox = useAppStore((state) => state.drawnBbox);
+  const setDrawnBbox = useAppStore((state) => state.setDrawnBbox);
 
   /* ---- nisar search ---- */
   const {
@@ -47,6 +49,25 @@ export function ControlPanel({
     analyze,
     isAnalyzing,
   } = useNisarSearch();
+
+  /* ---- drawn AOI ---- */
+  const handleUseDrawnArea = useCallback(() => {
+    if (!drawnBbox) return;
+    const [w, s, e, n] = drawnBbox;
+    const widthKm = ((e - w) * 111).toFixed(1);
+    const heightKm = ((n - s) * 111).toFixed(1);
+    const center: GeoLocation = {
+      id: `custom-${Date.now()}`,
+      name: `Custom AOI (${widthKm}×${heightKm} km)`,
+      lat: (s + n) / 2,
+      lng: (w + e) / 2,
+      bbox: drawnBbox,
+      source: 'manual',
+      detectionType,
+    };
+    selectLocation(center);
+    onLocationChange?.(center);
+  }, [drawnBbox, detectionType, selectLocation, onLocationChange]);
 
   /* ---- validation ---- */
   const dateError = useMemo(() => {
@@ -123,17 +144,68 @@ export function ControlPanel({
   /* ---- auto-select preset on detection change ---- */
   useEffect(() => {
     if (!detectionType) return;
-    if (selectedLocation?.detectionType === detectionType) return;
+
+    // Only auto-seed a preset when the user has not made a choice yet.
+    // A user-selected location (preset, search or custom draw) must never be
+    // silently overwritten by a mode switch.
+    if (selectedLocation) return;
+    // Skip when a custom drawn rectangle is persisted: drawing is an
+    // explicit user choice even before the location object hydrates.
+    if (drawnBbox) return;
+
+    // Also consult localStorage directly: on first paint React can run this
+    // effect before the store hydrate, and seeding a preset here would
+    // overwrite a persisted custom AOI that is about to be restored.
+    if (typeof window !== 'undefined') {
+      if (
+        window.localStorage.getItem('em.selectedLocation') ||
+        window.localStorage.getItem('em.drawnBbox')
+      ) {
+        return;
+      }
+    }
 
     const firstPreset = AOI_PRESETS.find((p) => p.detectionType === detectionType);
     if (firstPreset) {
       selectLocation(firstPreset);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [detectionType]);
+  }, [detectionType, drawnBbox, selectedLocation]);
 
   return (
     <div className={cn('space-y-3.5', className)}>
+      {/* Drawn custom area — shows when user has completed a rectangle draw */}
+      {drawnBbox && (
+        <div className="rounded-xl border border-accent/40 bg-accent/8 p-3 space-y-2">
+          <div className="flex items-center justify-between">
+            <span className="text-[10px] font-semibold uppercase tracking-wider text-accent">
+              📐 Custom Area
+            </span>
+            <button
+              type="button"
+              onClick={() => setDrawnBbox(null)}
+              className="text-[10px] text-ink-faint transition-colors hover:text-signal-critical"
+            >
+              clear
+            </button>
+          </div>
+          <div className="telemetry grid grid-cols-2 gap-x-3 gap-y-1 text-[10px]">
+            <span className="text-ink-muted">W: <span className="text-ink">{drawnBbox[0].toFixed(4)}°</span></span>
+            <span className="text-ink-muted">E: <span className="text-ink">{drawnBbox[2].toFixed(4)}°</span></span>
+            <span className="text-ink-muted">S: <span className="text-ink">{drawnBbox[1].toFixed(4)}°</span></span>
+            <span className="text-ink-muted">N: <span className="text-ink">{drawnBbox[3].toFixed(4)}°</span></span>
+          </div>
+          <Button
+            variant="outline"
+            size="sm"
+            fullWidth
+            icon={<Target className="h-3 w-3" />}
+            onClick={handleUseDrawnArea}
+          >
+            Use this area
+          </Button>
+        </div>
+      )}
       {/* ---- Preset Location Dropdown ---- */}
       <div className="space-y-1.5">
         <label className="text-[10px] font-semibold uppercase tracking-[0.12em] text-accent">

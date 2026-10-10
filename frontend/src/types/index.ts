@@ -238,6 +238,18 @@ export interface ResultMetadata {
     center?: { lat: number; lon: number };
     bbox?: { north: number; south: number; east: number; west: number };
   };
+
+  /** Nested stats blob written by the API module handlers. */
+  stats?: {
+    coveragePct?: number | null;
+    affectedAreaKm2?: number | null;
+    floodPixels?: number;
+    totalPixels?: number;
+    features?: number;
+    meanConfidence?: number | null;
+    pixelAreaKm2?: number;
+    [key: string]: unknown;
+  };
 }
 
 /** Output of the risk predictor (backend/api/services/ai_predictor.py). */

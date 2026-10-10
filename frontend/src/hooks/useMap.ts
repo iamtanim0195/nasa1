@@ -118,9 +118,17 @@ export function useAutoFlyToSelection(initialLocation?: GeoLocation | null): voi
   const selectLocation = useAppStore((state) => state.selectLocation);
   const flownToId = useRef<string | null>(null);
 
-  // Seed the store with the default AOI exactly once.
+  // Seed the store with the default AOI exactly once, unless a persisted
+  // custom AOI is waiting to be restored from localStorage.
   useEffect(() => {
-    if (!selectedLocation && initialLocation) selectLocation(initialLocation);
+    if (selectedLocation) return;
+    if (
+      typeof window !== 'undefined' &&
+      window.localStorage.getItem('em.selectedLocation')
+    ) {
+      return; // hydrateFromStorage will restore the real AOI
+    }
+    if (initialLocation) selectLocation(initialLocation);
   }, [initialLocation, selectedLocation, selectLocation]);
 
   useEffect(() => {

@@ -330,7 +330,7 @@ def despeckle(mask, min_neighbours=2):
 
     Preferred over `binary_opening_3x3` for SAR change masks. Opening erodes
     with a FULL 3x3 kernel, so any pixel lacking all eight neighbours dies and
-    cannot be restored by the following dilation â€” on a sparse change mask that
+    cannot be restored by the following dilation â€šâ‚¬ on a sparse change mask that
     erases the detection entirely. A neighbour-count filter removes lone pixels
     while preserving genuine small clusters.
     """
@@ -453,12 +453,12 @@ def _write_module_artifacts(module, before_data, after_data, mask, metadata, bac
 
         if ax_mask is not None:
             ax_mask.imshow(display_mask, cmap="inferno", interpolation="nearest")
-            ax_mask.set_title(f"detection mask â€” {int(display_mask.sum()):,} px",
+            ax_mask.set_title(f"detection mask â€šâ‚¬ {int(display_mask.sum()):,} px",
                               fontsize=10, fontweight="bold")
             ax_mask.axis("off")
 
         fig.suptitle(
-            f"{module.title()} â€” {metadata.get('beforeDate')} to {metadata.get('afterDate')}",
+            f"{module.title()} â€šâ‚¬ {metadata.get('beforeDate')} to {metadata.get('afterDate')}",
             fontsize=11, fontweight="bold",
         )
         fig.tight_layout()
@@ -522,7 +522,7 @@ def run_landslide_analysis(job_id, wkt, before_file_id, after_file_id):
     frac = (float(np.nanmean(slope[landslide_mask]))
             if slope is not None and landslide_pixels else None)
 
-    # Landslide area split by how steep the terrain is â€” a genuinely useful
+    # Landslide area split by how steep the terrain is â€šâ‚¬ a genuinely useful
     # distribution and the series the frontend bar chart renders.
     slope_bands = []
     if slope is not None:
@@ -1287,6 +1287,24 @@ DISPATCHERS = {
 }
 
 
+def _wkt_to_bbox_wgs84(wkt):
+    """
+    Extract [west, south, east, north] from a WKT POLYGON string.
+    Returns None if the string cannot be parsed.
+    """
+    try:
+        import re as _re
+        # Match all "lon lat" pairs inside POLYGON((...))
+        nums = _re.findall(r"(-?\d+\.?\d*)\s+(-?\d+\.?\d*)", wkt or "")
+        if not nums:
+            return None
+        lons = [float(a) for a, _ in nums]
+        lats = [float(b) for _, b in nums]
+        return [min(lons), min(lats), max(lons), max(lats)]
+    except Exception:
+        return None
+
+
 def run_analysis(job_id, wkt, before_file_id, after_file_id, detection_type="flood"):
     """
     Dispatch a job to the handler for `detection_type`.
@@ -1294,6 +1312,10 @@ def run_analysis(job_id, wkt, before_file_id, after_file_id, detection_type="flo
     Always leaves JOBS[job_id] in a terminal state (complete or error) and
     enforces JOB_TIMEOUT_S so a stuck job cannot report `running` forever.
     """
+    # Parse the WKT bbox once so every downstream handler and the result
+    # payload can echo back the exact AOI the user requested.
+    aoi_bbox = _wkt_to_bbox_wgs84(wkt)
+
     JOBS[job_id] = {
         "jobId": job_id,
         "status": "running",
@@ -1303,6 +1325,8 @@ def run_analysis(job_id, wkt, before_file_id, after_file_id, detection_type="flo
         "detectionType": detection_type,
         "result": None,
         "errorMessage": None,
+        "aoiBbox": aoi_bbox,
+        "wkt": wkt,
     }
 
     handler = DISPATCHERS.get(detection_type)
@@ -1377,7 +1401,7 @@ def extract_backscatter(file_path, wkt=None, crop_size=CROP_SIZE_DEFAULT):
 
     Passing `wkt` crops to a `crop_size` window centred on the AOI (peak memory
     ~350 MB). Omitting it reads the whole scene, which needs several GB and will
-    thrash on a normal machine â€” only do that deliberately.
+    thrash on a normal machine â€šâ‚¬ only do that deliberately.
     """
     with h5py.File(file_path, "r") as f:
         x_all = f[BASE_PATH + "xCoordinates"][:]
@@ -1440,7 +1464,7 @@ def detect_flood(before_data, after_data, job_id):
     Flood detection by dual-polarisation backscatter drop.
 
     A pixel is flooded when BOTH HH and HV fall by more than
-    FLOOD_THRESHOLD_DB between the two acquisitions â€” the intersection is what
+    FLOOD_THRESHOLD_DB between the two acquisitions â€šâ‚¬ the intersection is what
     suppresses false positives from surface roughness change alone.
     """
     delta_hh = after_data["hhhh_db"] - before_data["hhhh_db"]
@@ -1460,6 +1484,137 @@ def detect_flood(before_data, after_data, job_id):
     affected_area_km2 = round(flood_pixels * px_km2, 2)
 
     from api.services.ai_predictor import predict_risk
+
+
+    # --------------------------------------------------------------
+    # Save artifacts to output/flood/ so the overlay endpoint serves
+    # THIS analysis â€” not the Feni reference PNG.
+    # --------------------------------------------------------------
+    import json as _json
+    flood_folder = os.path.join(OUTPUT_FOLDER, "flood")
+    os.makedirs(flood_folder, exist_ok=True)
+
+    preview_url = "/artifacts/feni/feni_flood_detection.png"  # fallback
+    geotiff_url = "/artifacts/feni/feni_flood_mask.tif"
+
+    try:
+        from core.geotiff_exporter import export_geotiff
+        tif_target = os.path.join(flood_folder, "flood_mask.tif")
+        if export_geotiff(
+            (flood_mask & valid).astype("uint8"),
+            tif_target,
+            before_data["x_coords"], before_data["y_coords"],
+            before_data.get("projection", 32646), dtype="uint8",
+        ):
+            geotiff_url = "/artifacts/flood/flood_mask.tif"
+    except Exception as _exc:
+        logger.warning("Flood GeoTIFF export failed: %s", _exc)
+
+    try:
+        import matplotlib
+        matplotlib.use("Agg")
+        import matplotlib.pyplot as plt
+
+        background = np.asarray(after_data["hhhh_db"])
+        display_mask = flood_mask & valid
+
+        finite = np.isfinite(background)
+        if finite.any():
+            rows = np.where(finite.any(axis=1))[0]
+            cols = np.where(finite.any(axis=0))[0]
+            r0, r1 = int(rows[0]), int(rows[-1]) + 1
+            c0, c1 = int(cols[0]), int(cols[-1]) + 1
+            background = background[r0:r1, c0:c1]
+            display_mask = display_mask[r0:r1, c0:c1]
+
+        png_path = os.path.join(flood_folder, "flood_preview.png")
+        finite_bg = background[np.isfinite(background)]
+        vmin, vmax = (np.percentile(finite_bg, 2), np.percentile(finite_bg, 98)) if finite_bg.size else (None, None)
+
+        has_mask = bool(display_mask.any())
+        if has_mask:
+            fig, axes = plt.subplots(1, 2, figsize=(14, 7))
+            ax_full, ax_mask = axes
+        else:
+            fig, ax_full = plt.subplots(figsize=(7, 7))
+            ax_mask = None
+
+        ax_full.imshow(background, cmap="gray", vmin=vmin, vmax=vmax)
+        if has_mask:
+            visual = display_mask.copy()
+            for _ in range(3):
+                visual = visual | np.roll(visual, 1, 0) | np.roll(visual, 1, 1)
+            ax_full.imshow(np.ma.masked_where(~visual, visual), cmap="autumn", alpha=0.9)
+        ax_full.set_title("backscatter + flood detections", fontsize=10, fontweight="bold")
+        ax_full.axis("off")
+
+        if ax_mask is not None:
+            ax_mask.imshow(display_mask, cmap="inferno", interpolation="nearest")
+            ax_mask.set_title(f"flood mask - {int(display_mask.sum()):,} px", fontsize=10, fontweight="bold")
+            ax_mask.axis("off")
+
+        fig.suptitle(
+            f"Flood - {before_data['date']} to {after_data['date']}",
+            fontsize=11, fontweight="bold",
+        )
+        fig.tight_layout()
+        fig.savefig(png_path, dpi=110, bbox_inches="tight")
+        plt.close(fig)
+        # Also save a transparent RED-only mask for globe overlay
+        try:
+            from PIL import Image as _Image
+            import numpy as _np
+            full_mask = (flood_mask & valid).astype("uint8")
+            h, w = full_mask.shape
+            rgba = _np.zeros((h, w, 4), dtype=_np.uint8)
+            rgba[full_mask == 1] = [255, 0, 0, 200]
+            red_path = os.path.join(flood_folder, "flood_overlay.png")
+            _Image.fromarray(rgba, "RGBA").save(red_path, optimize=True)
+            logger.info("Flood red overlay saved: %s", red_path)
+        except Exception as _exc:
+            logger.warning("Flood red overlay failed: %s", _exc)
+
+        preview_url = "/artifacts/flood/flood_preview.png"
+    except Exception as _exc:
+        logger.warning("Flood preview render failed: %s", _exc)
+
+    try:
+        # Persist the raw arrays the results router enriches from (mask,
+        # deltas, coordinate axes). Without these the router falls back to
+        # zero-valued stats and empty category charts.
+        try:
+            import numpy as _np2
+            _np2.save(os.path.join(flood_folder, "flood_mask.npy"), (flood_mask & valid).astype("uint8"))
+            _np2.save(os.path.join(flood_folder, "delta_hh.npy"), delta_hh.astype("float32"))
+            _np2.save(os.path.join(flood_folder, "delta_hv.npy"), delta_hv.astype("float32"))
+            if before_data.get("x_coords") is not None:
+                _np2.save(os.path.join(flood_folder, "x_coords.npy"), _np2.asarray(before_data["x_coords"]))
+            if before_data.get("y_coords") is not None:
+                _np2.save(os.path.join(flood_folder, "y_coords.npy"), _np2.asarray(before_data["y_coords"]))
+            logger.info("Flood npy arrays saved to %s", flood_folder)
+        except Exception as _exc:
+            logger.warning("Flood npy save failed: %s", _exc)
+
+        meta_path = os.path.join(flood_folder, "flood_metadata.json")
+        with open(meta_path, "w", encoding="utf-8") as fh:
+            _json.dump({
+                "beforeDate": before_data["date"],
+                "afterDate": after_data["date"],
+                "track": f"{before_data['track']:03d}",
+                "frame": f"{before_data['frame']:03d}",
+                "aoiCenterPixel": before_data.get("aoi_center_pixel"),
+                "stats": {
+                    "coveragePct": coverage_pct,
+                    "affectedAreaKm2": affected_area_km2,
+                    "floodPixels": flood_pixels,
+                    "totalPixels": total_pixels,
+                    "features": int((flood_mask & valid).sum()),
+                    "meanConfidence": None,
+                    "pixelAreaKm2": px_km2,
+                },
+            }, fh, indent=2)
+    except Exception as _exc:
+        logger.warning("Flood metadata write failed: %s", _exc)
 
     return {
         "jobId": job_id,
@@ -1488,8 +1643,8 @@ def detect_flood(before_data, after_data, job_id):
             "frame": after_data["frame"],
             "window": after_data.get("window"),
         },
-        "geotiffUrl": "/artifacts/feni/feni_flood_mask.tif",
-        "previewUrl": "/artifacts/feni/feni_flood_detection.png",
+        "geotiffUrl": geotiff_url,
+        "previewUrl": preview_url,
         "metadata": {
             "beforeDate": before_data["date"],
             "afterDate": after_data["date"],

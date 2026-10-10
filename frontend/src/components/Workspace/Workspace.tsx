@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useCallback, useEffect, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
@@ -89,7 +89,12 @@ export function Workspace({ className }: WorkspaceProps) {
   const detectionLabel =
     DETECTION_TYPES.find((type) => type.id === detectionType)?.label ?? detectionType;
 
-  useAutoFlyToSelection(AOI_PRESETS[0] ?? null);
+  // Do NOT auto-seed a preset here: HydrationSync (providers.tsx) restores
+  // the user's persisted AOI from localStorage, and seeding a preset on every
+  // mount would overwrite that choice. A brand-new visitor with no persisted
+  // state simply starts with no location selected - the control panel prompts
+  // them to pick one.
+  useAutoFlyToSelection(null);
   useAutoFocusEvent();
 
   useEffect(() => {
@@ -190,6 +195,7 @@ export function Workspace({ className }: WorkspaceProps) {
             onError={() => setGlobeFailed(true)}
             floodMaskActive={showFloodOverlay}
             modisActive={showModis}
+            overlayUrl={moduleResult?.previewUrl ?? null}
           >
             <div className="absolute bottom-16 left-4 z-chrome flex flex-wrap items-center gap-2">
               <Button
@@ -288,21 +294,24 @@ export function Workspace({ className }: WorkspaceProps) {
                       <div>
                         <p className="text-ink-faint">Coverage</p>
                         <p className="text-base font-bold text-accent">
-                          {formatNum(moduleResult?.metadata?.coveragePct)}%
+                          {formatNum(moduleResult?.metadata?.stats?.coveragePct ?? moduleResult?.metadata?.coveragePct)}%
                         </p>
                       </div>
                       <div>
                         <p className="text-ink-faint">Affected Area</p>
                         <p className="text-base font-bold text-accent">
-                          {formatNum(moduleResult?.totalAreaKm2)} km2
+                          {formatNum(moduleResult?.metadata?.stats?.affectedAreaKm2 ?? moduleResult?.totalAreaKm2)} km2
                         </p>
                       </div>
                       <div>
                         <p className="text-ink-faint">Confidence</p>
                         <p className="text-base font-bold text-accent">
-                          {moduleResult?.meanConfidence != null
-                            ? `${Math.round(moduleResult.meanConfidence * 100)}%`
-                            : '-'}
+                          {(() => {
+                            const conf =
+                              moduleResult?.metadata?.stats?.meanConfidence ??
+                              moduleResult?.meanConfidence;
+                            return conf != null ? `${Math.round(conf * 100)}%` : '-';
+                          })()}
                         </p>
                       </div>
                       <div>

@@ -220,7 +220,7 @@ export function DsardPanel({ className, onStart }: DsardPanelProps) {
             onClick={() => {
                 setActiveStage('extracting');
                 if (typeof window !== 'undefined') {
-                  window.location.href = '/?result=feni';
+                  window.location.href = '/?result=latest';
                 }
               }}
           >

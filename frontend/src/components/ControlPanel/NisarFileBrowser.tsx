@@ -1,4 +1,4 @@
-﻿'use client';
+'use client';
 
 import { useMemo, useState } from 'react';
 import { Calendar, Database, Download, Filter, Layers, Play, Sparkles, X } from 'lucide-react';
@@ -57,26 +57,47 @@ export function NisarFileBrowser({
 
   /* ---- Auto-select best pair ---- */
   const autoSelect = () => {
-    // Find group with 2+ dates and smallest total size
-    let best: { before: NisarFile; after: NisarFile; size: number } | null = null;
+    let best: {
+      before: NisarFile;
+      after: NisarFile;
+      size: number;
+      downloaded: boolean;
+    } | null = null;
 
     for (const group of groups) {
-      const small = group.files.filter((f) => f.sizeGB < 3);
+      // Prefer groups whose granules are already on disk; that keeps the
+      // demo fast and avoids Earthdata download mid-analysis.
+      const downloaded = group.files.filter((f) => f.isDownloaded);
+      const pool = downloaded.length >= 2 ? downloaded : group.files;
+
+      const small = pool.filter((f) => f.sizeGB < 3);
       if (small.length < 2) continue;
 
       const sorted = [...small].sort((a, b) => a.date.localeCompare(b.date));
       const before = sorted[0];
       const after = sorted[sorted.length - 1];
       const size = before.sizeGB + after.sizeGB;
+      const isDownloadedPair = Boolean(before.isDownloaded && after.isDownloaded);
 
-      if (!best || size < best.size) {
-        best = { before, after, size };
+      if (
+        !best ||
+        (isDownloadedPair && !best.downloaded) ||
+        (isDownloadedPair === best.downloaded && size < best.size)
+      ) {
+        best = { before, after, size, downloaded: isDownloadedPair };
       }
     }
 
     if (best) {
       setSelectedBefore(best.before.id);
       setSelectedAfter(best.after.id);
+      // eslint-disable-next-line no-console
+      console.info(
+        '[auto-pick] chose pair',
+        best.before.granuleId,
+        best.after.granuleId,
+        { downloaded: best.downloaded, sizeGB: best.size.toFixed(2) },
+      );
     }
   };
 

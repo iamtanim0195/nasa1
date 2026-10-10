@@ -17,7 +17,55 @@ import type {
   Theme,
   ResultDataset,
   SarDataset,
+  BoundingBox,
 } from '@/types';
+
+/* ---- persistence helpers (localStorage-backed, SSR-safe) ---- */
+function readStoredLocation(): unknown | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    const raw = window.localStorage.getItem('em.selectedLocation');
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+}
+
+function readStoredBbox(): [number, number, number, number] | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    const raw = window.localStorage.getItem('em.drawnBbox');
+    return raw ? (JSON.parse(raw) as [number, number, number, number]) : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Synchronously adopt persisted state on the client, BEFORE React mounts.
+ * Without this, ControlPanel's detection-change effect runs on child mount
+ * (child effects fire before parent effects in React 18), sees
+ * `selectedLocation` as null, and seeds the default preset - overwriting
+ * the user's persisted custom AOI.
+ */
+function adoptPersistedState(): void {
+  if (typeof window === 'undefined') return;
+  try {
+    const loc = readStoredLocation() as GeoLocation | null;
+    const bbox = readStoredBbox();
+    if (!loc && !bbox) return;
+    const patch: Record<string, unknown> = {};
+    if (loc) patch.selectedLocation = loc;
+    if (bbox) patch.drawnBbox = bbox;
+    // The store is declared later in this module; the call site below runs
+    // after that declaration, so this is safe.
+    // eslint-disable-next-line @typescript-eslint/no-use-before-define
+    useAppStore.setState(patch);
+  } catch {
+    /* ignore */
+  }
+}
+
 
 export type PanelId = 'layers' | 'control' | 'events';
 
@@ -86,6 +134,9 @@ export interface AppState {
 
   /* ---- actions: search & selection ---- */
   setSearchQuery: (query: string) => void;
+  drawnBbox: BoundingBox | null;
+  setDrawnBbox: (bbox: BoundingBox | null) => void;
+  hydrateFromStorage: () => void;
   setSearchResults: (results: GeoLocation[]) => void;
   selectLocation: (location: GeoLocation | null) => void;
 
@@ -153,6 +204,7 @@ const INITIAL = {
   searchQuery: '',
   searchResults: [] as GeoLocation[],
   selectedLocation: null as GeoLocation | null,
+  drawnBbox: null,
 
   detectionType: 'flood' as DetectionType,
   dateRange: DEFAULT_DATE_RANGE,
@@ -214,15 +266,50 @@ export const useAppStore = create<AppState>()((set) => ({
   setGlobeError: (message) => set({ globeError: message }),
 
   /* ---- search & selection ---- */
+  hydrateFromStorage: () => {
+    try {
+      if (typeof window === 'undefined') return;
+      const loc = window.localStorage.getItem('em.selectedLocation');
+      const bbox = window.localStorage.getItem('em.drawnBbox');
+      const patch: { selectedLocation?: GeoLocation | null; drawnBbox?: BoundingBox | null } = {};
+      if (loc) patch.selectedLocation = JSON.parse(loc);
+      if (bbox) patch.drawnBbox = JSON.parse(bbox);
+      if (Object.keys(patch).length > 0) set(patch);
+    } catch {
+      /* corrupted — ignore */
+    }
+  },
   setSearchQuery: (query) => set({ searchQuery: query }),
+  setDrawnBbox: (bbox) => {
+    try {
+      if (typeof window !== 'undefined') {
+        if (bbox) window.localStorage.setItem('em.drawnBbox', JSON.stringify(bbox));
+        else window.localStorage.removeItem('em.drawnBbox');
+      }
+    } catch {
+      /* quota / SSR - ignore */
+    }
+    set({ drawnBbox: bbox });
+  },
   setSearchResults: (results) => set({ searchResults: results }),
-  selectLocation: (location) =>
+  selectLocation: (location) => {
+    // eslint-disable-next-line no-console
+    console.trace('[selectLocation] called with', location?.id, location?.bbox);
+    try {
+      if (typeof window !== 'undefined') {
+        if (location) window.localStorage.setItem('em.selectedLocation', JSON.stringify(location));
+        else window.localStorage.removeItem('em.selectedLocation');
+      }
+    } catch {
+      /* quota / SSR - ignore */
+    }
     set((state) => ({
       selectedLocation: location,
       // Selecting a location also clears the event focus so the camera is unambiguous.
       selectedEventId: null,
       eventFilter: location ? { ...state.eventFilter, query: '' } : state.eventFilter,
-    })),
+    }));
+  },
 
   /* ---- control ---- */
   setDetectionType: (type) => set({ detectionType: type }),
@@ -295,6 +382,10 @@ export const useAppStore = create<AppState>()((set) => ({
     set({ ...INITIAL });
   },
 }));
+
+// Synchronously adopt localStorage state before React mounts.
+adoptPersistedState();
+
 
 /* -------------------------------------------------------------------------- */
 /* Pure selectors                                                             */

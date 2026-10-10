@@ -42,3 +42,5 @@ export {
   type PickHandlers,
   type RenderEventsOptions,
 } from './entities';
+
+export { createRectangleDrawer, clearDrawPreview } from './drawRectangle';

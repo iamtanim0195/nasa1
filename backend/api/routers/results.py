@@ -38,7 +38,7 @@ OUTPUT_FOLDER = os.path.join(PROJECT_ROOT, "output")
 
 # Detection type -> (artifact subfolder, metadata filename)
 MODULE_ARTIFACTS = {
-    "flood": ("feni", "feni_metadata.json"),
+    "flood": ("flood", "flood_metadata.json"),
     "landslide": ("landslide", "landslide_metadata.json"),
     "river-erosion": ("river-erosion", "river-erosion_metadata.json"),
     "sea-level": ("sea-level", "sea-level_metadata.json"),
@@ -224,11 +224,15 @@ def _build_module_payload(module: str, meta: dict) -> dict:
     mask = delta_hh = delta_hv = None
     x_coords = y_coords = None
     if is_flood:
-        mask = _load_npy(os.path.join(folder, "feni_flood_mask.npy"))
-        delta_hh = _load_npy(os.path.join(folder, "feni_delta_hh.npy"))
-        delta_hv = _load_npy(os.path.join(folder, "feni_delta_hv.npy"))
-        x_coords = _load_npy(os.path.join(folder, "feni_x_coords.npy"))
-        y_coords = _load_npy(os.path.join(folder, "feni_y_coords.npy"))
+        mask = _load_npy(os.path.join(folder, "flood_mask.npy"))
+        delta_hh = _load_npy(os.path.join(folder, "delta_hh.npy"))
+        delta_hv = _load_npy(os.path.join(folder, "delta_hv.npy"))
+        x_coords = _load_npy(os.path.join(folder, "x_coords.npy"))
+        if x_coords is None:
+            x_coords = _load_npy(os.path.join(folder, "feni_x_coords.npy"))
+        y_coords = _load_npy(os.path.join(folder, "y_coords.npy"))
+        if y_coords is None:
+            y_coords = _load_npy(os.path.join(folder, "feni_y_coords.npy"))
 
         # The mask is persisted as uint8. Cast to bool so it can be used for
         # boolean indexing — `array[uint8_mask]` would otherwise be read as
@@ -300,7 +304,7 @@ def _build_module_payload(module: str, meta: dict) -> dict:
     )
 
     # --- Zone count ---
-    event_count = int(stats.get("features") or 0)
+    event_count = int(stats.get("features") or stats.get("floodPixels") or 0)
     if not event_count and mask is not None and mask.size:
         h, w = mask.shape
         tile = 300
@@ -313,10 +317,11 @@ def _build_module_payload(module: str, meta: dict) -> dict:
     after_date = meta.get("after_date") or meta.get("afterDate")
 
     sub = os.path.basename(folder)
-    geotiff = (f"/artifacts/{sub}/feni_flood_mask.tif" if is_flood
-               else f"/artifacts/{sub}/{module}_mask.tif")
-    preview = (f"/artifacts/{sub}/feni_flood_detection.png" if is_flood
-               else f"/artifacts/{sub}/{module}_preview.png")
+    # All modules (flood included) follow the same artifact naming —
+    # the writer stores {module}_mask.tif and {module}_preview.png in
+    # a folder named after the module.
+    geotiff = f"/artifacts/{sub}/{module}_mask.tif"
+    preview = f"/artifacts/{sub}/{module}_preview.png"
 
     return {
         "generatedAt": meta.get("processed_at") or time.strftime("%Y-%m-%dT%H:%M:%S"),

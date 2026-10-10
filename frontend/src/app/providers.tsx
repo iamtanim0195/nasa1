@@ -1,10 +1,11 @@
 'use client';
 
-import { useState, type ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ApiError } from '@/services';
 import { ToastViewport } from '@/components/ui/ToastViewport';
 import { useTheme } from '@/hooks/useTheme';
+import { useAppStore } from '@/store/appStore';
 
 /**
  * Global providers.
@@ -12,6 +13,17 @@ import { useTheme } from '@/hooks/useTheme';
  * The QueryClient is created inside `useState` so that it is never shared
  * between requests during SSR (and never recreated on re-render).
  */
+/**
+ * Restores persisted store state (selectedLocation, drawnBbox) once on mount.
+ * Runs after first paint so SSR and CSR stay in sync.
+ */
+function HydrationSync() {
+  useEffect(() => {
+    useAppStore.getState().hydrateFromStorage();
+  }, []);
+  return null;
+}
+
 function createQueryClient(): QueryClient {
   return new QueryClient({
     defaultOptions: {
@@ -47,6 +59,7 @@ export function Providers({ children }: { children: ReactNode }) {
   return (
     <QueryClientProvider client={queryClient}>
       <ThemeSync />
+      <HydrationSync />
       {children}
       <ToastViewport />
     </QueryClientProvider>

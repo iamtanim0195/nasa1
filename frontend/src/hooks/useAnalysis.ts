@@ -127,12 +127,25 @@ export function useAnalysis(): UseAnalysisResult {
 
     try {
       const parsed: unknown = JSON.parse(storedJobData);
-      if (isRestorableJob(parsed)) {
-        startAnalysis(parsed);
-      } else {
+      if (!isRestorableJob(parsed)) {
         console.warn('[analysis] discarding stored job with an unexpected shape');
         discard();
+        return;
       }
+      // Refuse to restore a job that is older than 10 minutes. The in-memory
+      // backend job store does not survive restarts, so any older id will
+      // 404 on every poll and lock the UI into a phantom "running" state.
+      const storedAt =
+        typeof (parsed as { startedAt?: string }).startedAt === 'string'
+          ? Date.parse((parsed as { startedAt: string }).startedAt)
+          : NaN;
+      const TEN_MINUTES = 10 * 60 * 1000;
+      if (Number.isFinite(storedAt) && Date.now() - storedAt > TEN_MINUTES) {
+        console.info('[analysis] discarding stale job (>10 min old):', (parsed as { id?: string }).id);
+        discard();
+        return;
+      }
+      startAnalysis(parsed);
     } catch (error) {
       console.warn('[analysis] could not restore job:', error);
       discard();
@@ -166,11 +179,18 @@ const startMutation = useMutation({
     enabled: Boolean(jobId),
     retry: (failureCount, error) => {
       // 404 = job no longer exists on the backend (e.g. server restarted).
-      // Discard local state so we stop polling a phantom job.
+      // Discard ALL stale analysis state so we stop polling a phantom job.
       const status = (error as { response?: { status?: number } })?.response?.status;
       if (status === 404) {
-        localStorage.removeItem('activeJobId');
-        localStorage.removeItem('activeJobData');
+        try {
+          localStorage.removeItem('activeJobId');
+          localStorage.removeItem('activeJobData');
+          // Clear the job from the store as well so dependent panels stop
+          // rendering a stale running state.
+          useAppStore.getState().setJob(null);
+        } catch {
+          /* ignore */
+        }
         return false;
       }
       return failureCount < 2;
@@ -218,7 +238,40 @@ const startMutation = useMutation({
   }, [widgetsQuery.data, setWidgets]);
 
   useEffect(() => {
-    if (resultsQuery.data) setResultDataset(resultsQuery.data.data);
+    if (!resultsQuery.data) return;
+    const dataset = resultsQuery.data.data;
+    setResultDataset(dataset);
+
+    // If the backend echoed back the exact AOI for this job, adopt it as
+    // the selected location. This guarantees the globe renders the overlay
+    // on the user's real drawn rectangle - never on a fallback preset.
+    const aoi = (dataset as { aoiBbox?: number[]; metadata?: { aoiBbox?: number[] } });
+    const bbox = aoi.aoiBbox ?? aoi.metadata?.aoiBbox;
+    if (Array.isArray(bbox) && bbox.length === 4) {
+      const [w, s, e, n] = bbox as [number, number, number, number];
+      const centerLat = (s + n) / 2;
+      const centerLng = (w + e) / 2;
+      const current = useAppStore.getState().selectedLocation;
+      // Only override if the current selection differs from the returned AOI
+      // (or nothing is selected). This keeps manual user selections intact.
+      const sameBbox =
+        current?.bbox &&
+        Math.abs(current.bbox[0] - w) < 1e-6 &&
+        Math.abs(current.bbox[1] - s) < 1e-6 &&
+        Math.abs(current.bbox[2] - e) < 1e-6 &&
+        Math.abs(current.bbox[3] - n) < 1e-6;
+      if (!sameBbox) {
+        useAppStore.getState().selectLocation({
+          id: current?.id?.startsWith('custom-') ? current.id : `custom-${Date.now()}`,
+          name: current?.name ?? 'Custom AOI (analysis)',
+          lat: centerLat,
+          lng: centerLng,
+          bbox: [w, s, e, n],
+          source: 'manual',
+          detectionType: useAppStore.getState().detectionType,
+        });
+      }
+    }
   }, [resultsQuery.data, setResultDataset]);
 
   useEffect(() => {

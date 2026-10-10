@@ -100,6 +100,19 @@ export function useNisarSearch(): UseNisarSearchResult {
       if (typeof window !== 'undefined') {
         localStorage.setItem('activeJobId', jobId);
         localStorage.setItem('activeJobData', JSON.stringify(job));
+        // Persist the AOI this job belongs to so a page reload restores
+        // both the job AND the correct location (never a fallback preset).
+        try {
+          const state = useAppStore.getState();
+          if (state.selectedLocation) {
+            localStorage.setItem('em.selectedLocation', JSON.stringify(state.selectedLocation));
+          }
+          if (state.drawnBbox) {
+            localStorage.setItem('em.drawnBbox', JSON.stringify(state.drawnBbox));
+          }
+        } catch {
+          /* ignore */
+        }
       }
 
       toast.info('Analysis started', `Job ${jobId} is running.`);

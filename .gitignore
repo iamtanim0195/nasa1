@@ -167,3 +167,28 @@ frontend/earth-metamorphosis/
 *.bak_*
 *.bak
 
+
+# ---- Earth Metamorphosis runtime artifacts ----
+# Pipeline outputs (masks, previews, metadata) are regenerated per analysis.
+output/
+nisar_data/
+
+# Backup files (created by edit scripts)
+*.bak
+*.bak_*
+*.backup_*
+
+# Python
+__pycache__/
+*.pyc
+backend/venv/
+venv/
+
+# Next.js
+frontend/.next/
+frontend/out/
+frontend/node_modules/
+
+# OS
+.DS_Store
+Thumbs.db

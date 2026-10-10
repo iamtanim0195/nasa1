@@ -117,4 +117,14 @@ async def get_job_result(request: Request, job_id: str):
     if status.get("status") != "complete":
         raise HTTPException(status_code=400, detail="Analysis not complete")
 
-    return envelope(status.get("result", {}), request_id=request_id)
+    payload = dict(status.get("result", {}) or {})
+    # Echo back the exact AOI the user requested so the frontend can restore
+    # the correct location on reload (never fall back to a preset).
+    aoi_bbox = status.get("aoiBbox")
+    if aoi_bbox:
+        payload["aoiBbox"] = aoi_bbox
+        meta = payload.get("metadata") or {}
+        meta["aoiBbox"] = aoi_bbox
+        payload["metadata"] = meta
+
+    return envelope(payload, request_id=request_id)
