@@ -1,0 +1,19 @@
+{
+  "beforeDate": "2026-07-02",
+  "afterDate": "2026-09-12",
+  "track": "091",
+  "frame": "077",
+  "aoiCenterPixel": {
+    "row": 8671,
+    "col": 11946
+  },
+  "stats": {
+    "coveragePct": 1.43,
+    "affectedAreaKm2": 51.49,
+    "floodPixels": 128736,
+    "totalPixels": 8999998,
+    "features": 128736,
+    "meanConfidence": null,
+    "pixelAreaKm2": 0.0004
+  }
+}
