@@ -91,6 +91,15 @@ export function ControlPanel({
   const handleDetectionChange = (value: DetectionType) => {
     setDetectionType(value);
     onDetectionTypeSelect?.(value);
+
+    // Auto-zoom to the first preset for this mode so the operator sees
+    // where the analysis will run. A hand-drawn AOI always wins.
+    if (drawnBbox) return;
+    const firstPreset = AOI_PRESETS.find((p) => p.detectionType === value);
+    if (firstPreset) {
+      selectLocation(firstPreset);
+      onLocationChange?.(firstPreset);
+    }
   };
 
   const handleDateChange = (patch: Partial<DateRange>) => {
@@ -170,7 +179,7 @@ export function ControlPanel({
       selectLocation(firstPreset);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [detectionType, drawnBbox, selectedLocation]);
+  }, [detectionType]);  // Deps intentionally minimal — this seeds once per mode switch.
 
   return (
     <div className={cn('space-y-3.5', className)}>
