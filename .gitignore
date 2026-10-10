@@ -163,3 +163,7 @@ frontend/earth-metamorphosis/
 # These sit inside tsconfig's include and previously produced build errors.
 *.backup_*
 *.bak
+# Backup files
+*.bak_*
+*.bak
+
