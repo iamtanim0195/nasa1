@@ -8,6 +8,37 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 import os
 
+# ──────────────────────────────────────────────────────────────────────
+# Bootstrap NASA Earthdata credentials for cloud deployments.
+#
+# Local dev: ~/.netrc already holds the user's Earthdata login.
+# Cloud (Railway/Render): the container is ephemeral, so we materialise
+# ~/.netrc from EARTHDATA_USERNAME and EARTHDATA_PASSWORD env vars.
+# ──────────────────────────────────────────────────────────────────────
+def _bootstrap_netrc() -> None:
+    user = os.environ.get("EARTHDATA_USERNAME")
+    pwd = os.environ.get("EARTHDATA_PASSWORD")
+    if not user or not pwd:
+        print("[bootstrap] EARTHDATA_USERNAME/PASSWORD not set — skipping .netrc")
+        return
+    netrc_path = Path.home() / ".netrc"
+    try:
+        netrc_path.write_text(
+            f"machine urs.earthdata.nasa.gov login {user} password {pwd}\n",
+            encoding="utf-8",
+        )
+        try:
+            netrc_path.chmod(0o600)
+        except Exception:
+            pass
+        print(f"[bootstrap] .netrc written to {netrc_path}")
+    except Exception as exc:
+        print(f"[bootstrap] .netrc write failed: {exc}")
+
+
+_bootstrap_netrc()
+
+
 from api.routers import search_location, nisar, mission, events, analyze, results
 
 STATIC_FOLDER = os.path.join(os.path.dirname(__file__), "static")
